@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [master]
   push:
-    branches: [master]
+    branches: [master, feature/heidelberg-1p3p-0.319.0]
   workflow_dispatch:
 
 permissions:

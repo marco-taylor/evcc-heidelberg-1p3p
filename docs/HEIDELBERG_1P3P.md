@@ -49,6 +49,7 @@ Der Workflow verwendet GitHub-gehostete Ubuntu-24.04-Runner. Es werden keine eig
 | PR gegen master | Go-Tests aller Pakete, fokussierte Race-Tests, vollständiger AMD64-Docker-Build und Versions-Smoke-Test | Nie |
 | Push/Merge auf master | Dieselben Prüfungen | Nur im richtigen Repository und mit Freigabevariable |
 | Manueller Workflow-Start | Dieselben Prüfungen | Nie |
+| Push auf feature/heidelberg-1p3p-0.319.0 | Dieselben Prüfungen auf der Entwicklungsbasis, auch bei blockiertem PR-Merge | Nie |
 | Andere Branches | Kein neuer Fork-Workflow | Nie |
 
 Die Test- und Docker-Jobs haben nur `contents: read`. Nur der Publish-Job besitzt zusätzlich `packages: write`. Die Anmeldung bei GHCR erfolgt mit `GITHUB_TOKEN`, ohne persönliche Zugangstoken oder Docker-Hub-Geheimnisse. PR-Jobs erhalten keine Registry-Anmeldung. Es wird kein privilegierter `pull_request_target`-Workflow verwendet.
