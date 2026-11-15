@@ -61,9 +61,12 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 ARG GOARM=${TARGETVARIANT#v}
+ARG TAG_NAME=0.319.0-heidelberg.1
+ARG SHA=unknown
+ENV GOAMD64=v1
 
 RUN --mount=type=cache,target=${GOCACHE} --mount=type=cache,target=${GOMODCACHE} \
-    RELEASE=${RELEASE} GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${GOARM} make build
+    RELEASE=${RELEASE} GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${GOARM} make build TAG_NAME="${TAG_NAME}" SHA="${SHA}"
 
 
 # STEP 3 build a small image including module support
@@ -71,8 +74,8 @@ FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a50
 
 # add labels
 LABEL org.opencontainers.image.documentation="https://docs.evcc.io"
-LABEL org.opencontainers.image.source="https://github.com/evcc-io/evcc"
-LABEL org.opencontainers.image.url="https://github.com/evcc-io/evcc"
+LABEL org.opencontainers.image.source="https://github.com/marco-taylor/evcc"
+LABEL org.opencontainers.image.url="https://github.com/marco-taylor/evcc"
 LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
