@@ -6,17 +6,16 @@ Stand: 2026-11-15. GitHub-Account über die verbundene GitHub-Anbindung als `mar
 
 Der Port, die lokale Prüfung und der vollständige Docker-Build sind vorbereitet und erfolgreich geprüft. Es wurde kein produktiver evcc-Container verändert und keine Wallbox oder Schützsteuerung angesprochen.
 
-**Ein GitHub-Fork und Pull Request konnten noch nicht erstellt werden.** `marco-taylor/evcc` lieferte bei der abschließenden Abfrage über die GitHub-Anbindung weiterhin HTTP 404. Das kann ein fehlendes oder für die Verbindung nicht zugängliches Repository bedeuten. Die angebotenen GitHub-Werkzeuge unterstützen Repository-Inhalte, Branches und PRs, aber keine Fork-Erstellung. Ein angemeldetes GitHub-CLI beziehungsweise ein hierfür bereitgestelltes API-Zugangstoken ist auf dem Server nicht vorhanden. Zugangsdaten wurden nicht aus anderen Anwendungen übernommen.
+Der öffentliche Fork ist jetzt unter https://github.com/marco-taylor/evcc-heidelberg-1p3p erreichbar. Die GitHub-Anbindung bestätigt admin und push für marco-taylor sowie master als Standardbranch. Git-Push über HTTPS und SSH ist auf dem Server nicht authentifiziert. Deshalb wurde der vollständige Dateistand über die GitHub-Anbindung übertragen.
 
-Die Person wurde gebeten, über https://github.com/evcc-io/evcc/fork den Fork unter marco-taylor/evcc anzulegen beziehungsweise einen vorhandenen zugänglich zu machen. Anschließend sind Branch-Übertragung, PR-Erstellung und Beobachtung der gehosteten CI noch auszuführen. Es wird kein existierender Branch überschrieben.
+Der ursprüngliche lokale Commit `068022a72158b85e0e5f606d459d2892edc18572` bleibt erhalten. Der inhaltsgleiche GitHub-Commit ist `35784a7e356e4261a09300a819018ba696c464b9`. Beide besitzen exakt denselben Git-Tree `fd1b0caf036b782b05272de3e95598cb321500b6`. Unterschiedlich sind die Commit-Metadaten. Die Übertragung bewahrt somit alle Dateiinhalte und Dateimodi, aber nicht die ursprüngliche Commit-ID.
 
-- Lokaler Entwicklungsbranch: `feature/heidelberg-1p3p-0.319.0`.
-- Geplante PR-Basis: `heidelberg-main`, zunächst auf dem offiziellen Tag 0.319.0.
-- Geplante Veröffentlichung: `ghcr.io/marco-taylor/evcc:latest` und `ghcr.io/marco-taylor/evcc:sha-<vollständiger-Commit>`.
-- Hosted-CI-Status: noch nicht verfügbar, kein PR angelegt.
-- Merge: nicht ausgeführt, Freigabe ausstehend.
-- GHCR-Veröffentlichung: nicht ausgeführt, Freigabe ausstehend.
-- Prüfung des veröffentlichten Digests: erst nach der freigegebenen Veröffentlichung möglich.
+- Entwicklungsbranch: feature/heidelberg-1p3p-0.319.0.
+- PR-Ziel: master. Dessen Kopf `7b590b84e36484f73c94cb813abf2d555dd5f193` liegt 90 Commits nach dem getesteten Release. Die endgültige Versionsbasis ist vor Merge zu entscheiden; master bleibt unverändert.
+- Geplante Images: ghcr.io/marco-taylor/evcc-heidelberg-1p3p:latest und sha-<vollständiger-Commit>.
+- Hosted-CI: noch ausstehend. Die folgenden lokalen Ergebnisse stammen vom ursprünglichen 0.319.0-Port.
+- Merge und GHCR-Veröffentlichung: nicht ausgeführt, Freigabe ausstehend.
+- Registry-Pull, Paket-Sichtbarkeit und tatsächliche packages:write-Funktion: erst nach freigegebener Erstveröffentlichung prüfbar.
 
 ## Quellen und Änderungsprüfung
 
@@ -75,7 +74,7 @@ Der aktive Fork-Workflow wurde manuell und mit actionlint geprüft:
 
 - PR-Ereignisse besitzen keinen Publish-Pfad und keine Registry-Anmeldung.
 - Manuelle Workflow-Starts besitzen ebenfalls keinen Publish-Pfad.
-- Nur ein Push auf heidelberg-main im Repository marco-taylor/evcc ist grundsätzlich berechtigt.
+- Nur ein Push auf master im Repository marco-taylor/evcc-heidelberg-1p3p ist grundsätzlich berechtigt.
 - Zusätzlich muss HEIDELBERG_PUBLISH_APPROVED exakt true sein. Ohne diese noch ausstehende Freigabe bleibt Veröffentlichung gesperrt.
 - Tests und Docker-Prüfung müssen beide erfolgreich sein.
 - Das getestete Image aus genau demselben Workflow-Lauf wird aus dem Artefakt geladen und mit vollem Commit-SHA sowie latest getaggt.
@@ -83,7 +82,7 @@ Der aktive Fork-Workflow wurde manuell und mit actionlint geprüft:
 - Nur der Publish-Job hat packages:write. Verwendet wird ausschließlich GITHUB_TOKEN; kein persönliches Veröffentlichungstoken.
 - Es gibt keinen Deployment-Zugriff auf Unraid und keine automatische Aktualisierung des dortigen Containers.
 
-Die Repository-Einstellungen, tatsächliche GitHub-Checks, Paketberechtigungen und ein Registry-Pull können vor zugänglichem Fork beziehungsweise erster freigegebener Veröffentlichung noch nicht bestätigt werden. Die konkrete Vorgehensweise steht in `./docs/HEIDELBERG_1P3P.md`.
+Administrative Actions-Einstellungen und Branchschutz sind über die angebotenen GitHub-Werkzeuge nicht vollständig auslesbar. Paketberechtigungen und ein Registry-Pull sind vor der ersten freigegebenen Veröffentlichung nicht praktisch bestätigt. Die konkrete Vorgehensweise steht in `./docs/HEIDELBERG_1P3P.md`.
 
 ## Lokale Nachweise
 

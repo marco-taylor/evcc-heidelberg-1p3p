@@ -3,11 +3,11 @@
 ## Stand und Freigabe
 
 Dieser Fork basiert auf evcc **0.319.0**, Commit `811d77b2c699a0fe0fa5d76ad7623da8cfe7cff4`.
-Die Hauptlinie für geprüfte Fork-Versionen heißt **heidelberg-main**. Der ursprüngliche Upstream-Branch bleibt separat.
+PR-Ziel und spätere Veröffentlichungslinie ist **master**. Der Fork-master steht derzeit auf `7b590b84e36484f73c94cb813abf2d555dd5f193`, 90 Commits nach 0.319.0. Die Wahl zwischen dieser neueren Basis und dem ursprünglich getesteten Release ist vor einem Merge ausdrücklich zu klären. Ein PR-Mergelauf prüft die Kombination mit dem aktuellen master und ist kein Nachweis eines unveränderten 0.319.0-Releases.
 
 Der erste Merge und die erste Veröffentlichung benötigen Marcos ausdrückliche Freigabe. Der Workflow veröffentlicht erst, wenn die Repository-Variable `HEIDELBERG_PUBLISH_APPROVED` exakt `true` ist. Solange die Variable fehlt oder anders gesetzt ist, erfolgen nur Prüfungen.
 
-Das geplante Image heißt `ghcr.io/marco-taylor/evcc:latest`. Dazu wird derselbe geprüfte Image-Inhalt als `ghcr.io/marco-taylor/evcc:sha-<vollständiger-Commit>` veröffentlicht. Ein Pull Request veröffentlicht keine Registry-Tags. Ein manueller Workflow-Start veröffentlicht ebenfalls nichts.
+Das geplante Image heißt `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:latest`. Dazu wird derselbe geprüfte Image-Inhalt als `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:sha-<vollständiger-Commit>` veröffentlicht. Ein Pull Request veröffentlicht keine Registry-Tags. Ein manueller Workflow-Start veröffentlicht ebenfalls nichts.
 
 Eine Veröffentlichung ist keine Installation auf Unraid. Es gibt keinen Zugriff der Actions auf den Server und keinen automatischen Container-Update-Schritt.
 
@@ -46,20 +46,20 @@ Der Workflow verwendet GitHub-gehostete Ubuntu-24.04-Runner. Es werden keine eig
 
 | Ereignis | Prüfung | Veröffentlichung |
 | --- | --- | --- |
-| PR gegen heidelberg-main | Go-Tests aller Pakete, fokussierte Race-Tests, vollständiger AMD64-Docker-Build und Versions-Smoke-Test | Nie |
-| Push/Merge auf heidelberg-main | Dieselben Prüfungen | Nur im richtigen Repository und mit Freigabevariable |
+| PR gegen master | Go-Tests aller Pakete, fokussierte Race-Tests, vollständiger AMD64-Docker-Build und Versions-Smoke-Test | Nie |
+| Push/Merge auf master | Dieselben Prüfungen | Nur im richtigen Repository und mit Freigabevariable |
 | Manueller Workflow-Start | Dieselben Prüfungen | Nie |
 | Andere Branches | Kein neuer Fork-Workflow | Nie |
 
 Die Test- und Docker-Jobs haben nur `contents: read`. Nur der Publish-Job besitzt zusätzlich `packages: write`. Die Anmeldung bei GHCR erfolgt mit `GITHUB_TOKEN`, ohne persönliche Zugangstoken oder Docker-Hub-Geheimnisse. PR-Jobs erhalten keine Registry-Anmeldung. Es wird kein privilegierter `pull_request_target`-Workflow verwendet.
 
-Der Publish-Job lädt das vom Docker-Job dieses Push-Laufs getestete Image. Es wird nicht nochmals anders gebaut. Er prüft außerdem, dass der Commit noch der Kopf von heidelberg-main ist, damit ein alter wiederholter Lauf nicht versehentlich latest zurücksetzt. Erst wird der Commit-Tag, dann latest gepusht.
+Der Publish-Job lädt das vom Docker-Job dieses Push-Laufs getestete Image. Es wird nicht nochmals anders gebaut. Er prüft außerdem, dass der Commit noch der Kopf von master ist, damit ein alter wiederholter Lauf nicht versehentlich latest zurücksetzt. Erst wird der Commit-Tag, dann latest gepusht.
 
 Vor dem ersten Merge durch den Repository-Eigentümer erledigen beziehungsweise überprüfen:
 
-1. Den offiziellen Fork `marco-taylor/evcc` erstellen und `heidelberg-main` auf dem dokumentierten Basistag anlegen. Keine fremden bestehenden Branches überschreiben.
-2. Den PR und die Sicherheitsgrenzen prüfen. Den Fork-Standardbranch auf heidelberg-main setzen, damit geerbte zeitgesteuerte Workflows des unveränderten master nicht als Fork-Automation weiterlaufen.
-3. Actions im Fork aktivieren und auf die verwendeten Actions beschränken, soweit gewünscht. Für heidelberg-main Branchschutz gegen direkte Pushes und die Pflichtprüfungen **Go tests** und **Docker linux/amd64** konfigurieren.
+1. Der öffentliche Fork `marco-taylor/evcc-heidelberg-1p3p` ist erreichbar; der verbundene Account besitzt admin und push. Den Versionsunterschied zwischen Fork-master und 0.319.0 vor dem Merge klären. Kein bestehender Hauptbranch wird zurückgesetzt.
+2. Den PR und die Sicherheitsgrenzen prüfen. Der Standardbranch ist bereits master. Bis zum Merge liegen dort noch die geerbten Upstream-Workflows; deren Ausführung muss in den Actions-Einstellungen geprüft werden.
+3. Actions im Fork aktivieren und auf die verwendeten Actions beschränken, soweit gewünscht. Für master Branchschutz gegen direkte Pushes und die Pflichtprüfungen **Go tests** und **Docker linux/amd64** konfigurieren.
 4. Die Repository-Variable `HEIDELBERG_PUBLISH_APPROVED` bleibt bis zur ausdrücklichen Freigabe ungesetzt. Dadurch kann auch ein versehentlicher früher Push unseres Workflows keine Veröffentlichung auslösen.
 5. Erst nach Marcos ausdrücklicher Merge- und Veröffentlichungsfreigabe `HEIDELBERG_PUBLISH_APPROVED=true` setzen und den geprüften PR zusammenführen. Der Merge-Push startet die Veröffentlichung automatisch. Auch spätere Merges benötigen die vereinbarte Freigabe, lösen aber keinen zusätzlichen Deployment-Review aus.
 6. Nach Veröffentlichung GHCR-Sichtbarkeit und Paketberechtigungen prüfen. Öffentliche Forks bedeuten nicht automatisch öffentlich lesbare Containerpakete. Für anonymes Unraid-Pullen muss das Paket öffentlich sein; ansonsten separat authentifizieren.
@@ -68,6 +68,12 @@ Vor dem ersten Merge durch den Repository-Eigentümer erledigen beziehungsweise 
 Die administrative Einrichtung von Default-Branch, Branchschutz und Freigabevariable ist nicht allein durch die Workflowdatei bewiesen. Noch nicht durchgeführte Schritte müssen im PR offen bleiben.
 
 Dokumentation: [GitHub GHCR-Veröffentlichung](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images).
+
+## Firmware-Kompatibilität
+
+Die offizielle [Bridge-Firmware 0.0.2](https://github.com/zivillian/heidelberg-1p3p/releases/tag/0.0.2) verwendet das vom Port erwartete Modbus-TCP-Protokoll mit Holding-Register 4 und Phasenwerten 1 beziehungsweise 3. Diese Protokollübereinstimmung ist anhand der Quellen geprüft. Ein Startwert 0 aktiviert die Umschaltfähigkeit in diesem evcc-Prozess nicht.
+
+Die separat untersuchte offizielle Binärdatei hat 964352 Bytes und SHA256 `d87158b73c9c8c8f5f4bb3762edb71a917285def7cfa3cd158bc7e963b55699c`. Sie ist ein gültiges ESP32-Anwendungsimage, kein vollständiges Erstflash-Paket mit Bootloader und Partitionstabelle. Eine bestätigte Flashbelegung und die Inbetriebnahme der konkreten DT-R002 DEV mit RS485 bleiben eigenständige offene Prüfungen. Es gibt hier keine Flashfreigabe und keinen Nachweis sicherer Schützsteuerung.
 
 ## Konfiguration der Bridge
 
@@ -98,16 +104,16 @@ Auch `mode: off` und reine Diagnoseaufrufe garantieren keinen schreibfreien Ger�
 Für einen anfänglichen hardwarefreien Test nach der späteren Veröffentlichung:
 
 ```bash
-docker pull ghcr.io/marco-taylor/evcc:sha-VOLLSTAENDIGER_COMMIT
+docker pull ghcr.io/marco-taylor/evcc-heidelberg-1p3p:sha-VOLLSTAENDIGER_COMMIT
 docker run --rm --network none --entrypoint evcc \
-  ghcr.io/marco-taylor/evcc:sha-VOLLSTAENDIGER_COMMIT --version
+  ghcr.io/marco-taylor/evcc-heidelberg-1p3p:sha-VOLLSTAENDIGER_COMMIT --version
 ```
 
 Keine produktive Konfiguration, Datenbank, Geräte, privilegierter Modus oder Host-Netzwerk für diesen Test. Er prüft nur Startfähigkeit und Architektur, nicht Ladebetrieb oder Schützsicherheit.
 
 Für eine spätere Installation über Unraids Docker-Verwaltung:
 
-- Zunächst ein eigenes Template und einen separaten Container verwenden. Repository `ghcr.io/marco-taylor/evcc:sha-VOLLSTAENDIGER_COMMIT` oder einen notierten Digest wählen. latest ist der bequeme bewegliche Tag, ein Commit-Tag beziehungsweise Digest ist für kontrollierte Updates vorzuziehen.
+- Zunächst ein eigenes Template und einen separaten Container verwenden. Repository `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:sha-VOLLSTAENDIGER_COMMIT` oder einen notierten Digest wählen. latest ist der bequeme bewegliche Tag, ein Commit-Tag beziehungsweise Digest ist für kontrollierte Updates vorzuziehen.
 - Konfiguration und Daten unter einem separaten Appdata-Verzeichnis ablegen. Beispielpfade für den späteren Test: `/mnt/user/appdata/evcc-heidelberg-test/evcc.yaml` und `/mnt/user/appdata/evcc-heidelberg-test/data/`. Produktionsdateien nicht gleichzeitig von zwei Containern öffnen lassen.
 - Die Konfiguration beispielsweise nach `/etc/evcc.yaml:ro` und das separate Datenverzeichnis nach `/data` mounten. Anwendungsargumente `--config /etc/evcc.yaml --database /data/evcc.db` verwenden.
 - Bei einem später freigegebenen UI-Test mit simulierten Geräten Bridge-Netzwerk und eine freie Host-Portzuordnung, etwa 17070 nach 7070, verwenden. Kein Host-Netzwerk und keine echten Geräte für diesen Test.
@@ -131,7 +137,7 @@ Für einen Rollback den vorher notierten Image-Digest/Commit-Tag zusammen mit de
 3. Änderungen an Registerprotokoll, Auswahl der Phasen, Timing oder Steuerungslogik benötigen eine gesonderte Prüfung. Ein Upstream-Merge ist dafür keine automatische Freigabe.
 4. Bei Upstream-Aktualisierungen neu hinzugekommene Workflows ebenfalls aus dem aktiven Verzeichnis nehmen oder ausdrücklich prüfen. Archivierte Workflows werden nicht automatisch ausgeführt.
 5. Go-/UI-Versionen und Docker-Basisimages aus der neuen Upstream-Version gemeinsam prüfen. Versionsargument im Docker-Build und Workflow aktualisieren.
-6. Simulator-, Go- und Docker-Prüfungen ausführen. PR gegen heidelberg-main erstellen, Änderungen dokumentieren und vor dem Merge freigeben lassen. Keine automatischen Upstream-Merges auf die freigegebene Hauptlinie.
+6. Simulator-, Go- und Docker-Prüfungen ausführen. PR gegen master erstellen, Änderungen dokumentieren und vor dem Merge freigeben lassen. Keine automatischen Upstream-Merges auf die freigegebene Hauptlinie.
 
 ## Prüfumfang
 

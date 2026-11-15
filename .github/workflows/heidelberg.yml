@@ -2,9 +2,9 @@ name: Heidelberg CI and GHCR
 
 on:
   pull_request:
-    branches: [heidelberg-main]
+    branches: [master]
   push:
-    branches: [heidelberg-main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -64,10 +64,10 @@ jobs:
           test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' evcc-heidelberg:ci)" = linux/amd64
           docker run --rm --network none --entrypoint evcc evcc-heidelberg:ci --version
       - name: Export tested image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/heidelberg-main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: docker save evcc-heidelberg:ci -o image.tar
       - name: Retain tested image for publishing job
-        if: github.event_name == 'push' && github.ref == 'refs/heads/heidelberg-main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: heidelberg-image
@@ -78,9 +78,9 @@ jobs:
     name: Publish approved main branch
     needs: [test, docker]
     if: >-
-      github.repository == 'marco-taylor/evcc' &&
+      github.repository == 'marco-taylor/evcc-heidelberg-1p3p' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/heidelberg-main' &&
+      github.ref == 'refs/heads/master' &&
       vars.HEIDELBERG_PUBLISH_APPROVED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -88,14 +88,14 @@ jobs:
       contents: read
       packages: write
     env:
-      IMAGE: ghcr.io/marco-taylor/evcc
+      IMAGE: ghcr.io/marco-taylor/evcc-heidelberg-1p3p
       COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Refuse publishing a superseded main commit
-        run: test "$(git ls-remote origin refs/heads/heidelberg-main | cut -f1)" = "$COMMIT"
+        run: test "$(git ls-remote origin refs/heads/master | cut -f1)" = "$COMMIT"
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: heidelberg-image
