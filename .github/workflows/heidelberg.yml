@@ -1,0 +1,121 @@
+name: Heidelberg CI and GHCR
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heidelberg-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Go tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: Prepare embedded assets for Go tests
+        run: mkdir -p dist && touch dist/empty
+      - name: Test all Go packages
+        run: make test
+      - name: Check bridge integration with race detector
+        run: go test -race -tags=release -run '^TestHeidelberg' ./charger
+
+  docker:
+    name: Docker linux/amd64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Build complete image including UI without publishing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: evcc-heidelberg:ci
+          build-args: |
+            TAG_NAME=0.320.0-dev.heidelberg.7b590b84
+            SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=0.320.0-dev.heidelberg.7b590b84
+          cache-from: type=gha,scope=heidelberg-amd64
+          cache-to: type=gha,mode=max,scope=heidelberg-amd64
+      - name: Smoke test without network, devices or configuration
+        run: |
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' evcc-heidelberg:ci)" = linux/amd64
+          docker run --rm --network none --entrypoint evcc evcc-heidelberg:ci --version
+      - name: Export tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: docker save evcc-heidelberg:ci -o image.tar
+      - name: Retain tested image for publishing job
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: heidelberg-image
+          path: image.tar
+          retention-days: 3
+
+  upstream-checks:
+    name: Upstream checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/default.yml
+
+  publish:
+    name: Publish approved main branch
+    needs: [test, docker, upstream-checks]
+    if: >-
+      github.repository == 'marco-taylor/evcc-heidelberg-1p3p' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      vars.HEIDELBERG_PUBLISH_APPROVED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/marco-taylor/evcc-heidelberg-1p3p
+      COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Refuse publishing a superseded main commit
+        run: test "$(git ls-remote origin refs/heads/master | cut -f1)" = "$COMMIT"
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: heidelberg-image
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested image with commit and latest tags
+        run: |
+          docker load -i image.tar
+          docker tag evcc-heidelberg:ci "$IMAGE:sha-$COMMIT"
+          docker tag evcc-heidelberg:ci "$IMAGE:latest"
+          docker push "$IMAGE:sha-$COMMIT"
+          docker push "$IMAGE:latest"

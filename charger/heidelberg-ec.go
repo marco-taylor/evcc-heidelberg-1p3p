@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/evcc-io/evcc/api"
+	"github.com/evcc-io/evcc/api/implement"
 	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/modbus"
 	"github.com/evcc-io/evcc/util/sponsor"
@@ -31,6 +32,7 @@ import (
 
 // HeidelbergEC charger implementation
 type HeidelbergEC struct {
+	implement.Caps
 	log     *util.Logger
 	conn    *modbus.Connection
 	current uint16
@@ -38,6 +40,7 @@ type HeidelbergEC struct {
 }
 
 const (
+	hecRegFirmware       = 4   // Input - Holding if external phase switch installed
 	hecRegVehicleStatus  = 5   // Input
 	hecRegCurrents       = 6   // Input 6,7,8
 	hecRegTemperature    = 9   // Input
@@ -90,6 +93,7 @@ func NewHeidelbergEC(ctx context.Context, settings modbus.Settings) (api.Charger
 	conn.Logger(log.TRACE)
 
 	wb := &HeidelbergEC{
+		Caps:    implement.New(),
 		log:     log,
 		conn:    conn,
 		current: 60, // assume min current
@@ -109,6 +113,14 @@ func NewHeidelbergEC(ctx context.Context, settings modbus.Settings) (api.Charger
 		go wb.heartbeat(ctx, time.Duration(u)*time.Millisecond)
 	}
 
+	b, noSwitchErr := wb.conn.ReadHoldingRegisters(hecRegFirmware, 1)
+	if noSwitchErr == nil {
+		phases := binary.BigEndian.Uint16(b)
+		if phases == 3 || phases == 1 {
+			log.DEBUG.Println("detected phase switch")
+			implement.Has(wb, implement.PhaseSwitcher(wb.phases1p3p))
+		}
+	}
 	return wb, nil
 }
 
@@ -325,4 +337,10 @@ func (wb *HeidelbergEC) WakeUp() error {
 
 	// return to normal operation by unlocking after ~10 sec
 	return wb.set(hecRegRemoteLock, 1)
+}
+
+// phases1p3p implements the api.PhaseSwitcher interface
+func (wb *HeidelbergEC) phases1p3p(phases int) error {
+	_, err := wb.conn.WriteSingleRegister(hecRegFirmware, uint16(phases))
+	return err
 }
