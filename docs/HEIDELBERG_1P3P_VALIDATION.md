@@ -1,4 +1,4 @@
-# Lokaler Prüfbericht: Heidelberg-1p3p auf evcc 0.319.0
+# Prüfbericht: Heidelberg-1p3p auf evcc 0.319.0
 
 Stand: 2026-11-15. GitHub-Account über die verbundene GitHub-Anbindung als `marco-taylor` bestätigt.
 
@@ -13,7 +13,7 @@ Der ursprüngliche lokale Commit `068022a72158b85e0e5f606d459d2892edc18572` blei
 - Entwicklungsbranch: feature/heidelberg-1p3p-0.319.0.
 - PR-Ziel: master. Dessen Kopf `7b590b84e36484f73c94cb813abf2d555dd5f193` liegt 90 Commits nach dem getesteten Release. Die endgültige Versionsbasis ist vor Merge zu entscheiden; master bleibt unverändert.
 - Geplante Images: ghcr.io/marco-taylor/evcc-heidelberg-1p3p:latest und sha-<vollständiger-Commit>.
-- Hosted-CI: noch ausstehend. Die folgenden lokalen Ergebnisse stammen vom ursprünglichen 0.319.0-Port.
+- Hosted-CI: [Lauf 43700268952](https://github.com/marco-taylor/evcc-heidelberg-1p3p/actions/runs/43700268952) auf Entwicklungscommit `5fbf29873c4a52721a396b5af25af5f3c610e957`: Go tests und Docker linux/amd64 erfolgreich, Publish übersprungen.
 - Merge und GHCR-Veröffentlichung: nicht ausgeführt, Freigabe ausstehend.
 - Registry-Pull, Paket-Sichtbarkeit und tatsächliche packages:write-Funktion: erst nach freigegebener Erstveröffentlichung prüfbar.
 
@@ -52,7 +52,23 @@ Die gesamte Testsuite ist nicht vollständig netzwerkfrei ausführbar: EEBus-Tes
 2. Das Hauptpaket tariff separat mit regulärem Internetzugang für seine öffentliche Preisabfrage. Keine produktive Konfiguration, Datenbank oder Geräte waren eingebunden. Damit bleibt kein Go-Paket ungetestet.
 3. Die Heidelberg-Race-Tests mit network=none. Der Modbus-Simulator bindet ausschließlich an 127.0.0.1 und verwendet eine zufällige freie Portnummer.
 
-GitHub Actions führt das unveränderte vollständige `make test` auf einem GitHub-gehosteten Ubuntu-Runner mit dessen normaler Testnetzwerkumgebung aus. Dieses gehostete Ergebnis muss nach dem noch ausstehenden PR separat kontrolliert werden. Lokale Ergebnisse werden nicht als gehosteter CI-Erfolg ausgegeben.
+## GitHub-Actions-Nachweis
+
+[Entwurfs-PR #1](https://github.com/marco-taylor/evcc-heidelberg-1p3p/pull/1) richtet sich gegen master. Der [Entwicklungsbranch-Lauf 43700268952](https://github.com/marco-taylor/evcc-heidelberg-1p3p/actions/runs/43700268952) hat folgende gehostete Ergebnisse:
+
+| Prüfung | Ergebnis |
+| --- | --- |
+| Alle Go-Pakete mit unverändertem make test und Release-Build-Tag | success |
+| Heidelberg-Race-Tests | success, Charger-Paket 2.063 s |
+| Vollständiger Docker-Build einschließlich UI, linux/amd64 | success |
+| Architekturprüfung und evcc --version ohne Netzwerk/Geräte | success |
+| GHCR-Publish | skipped, absichtlich kein master-Push |
+
+Der Go-Runner meldet Contents: read und Metadata: read. Test- und Docker-Job besitzen keine packages:write-Berechtigung und melden sich nicht bei GHCR an. Das Repository führt Actions tatsächlich aus; administrative Einstellungen und Branchschutz bleiben separat zu prüfen.
+
+Diese Ergebnisse gelten für den Entwicklungsbranch auf 0.319.0. GitHub meldet den PR gegen den neueren master als dirty; deshalb ist dies kein erfolgreicher PR-Mergelauf. Ohne Rename-Erkennung lässt sich der Konflikt lokal auf fünf geänderte und ins Archiv verschobene Upstream-Workflows zurückführen. Vor der Entscheidung über die Versionsbasis wird keine neue Upstream-Anwendungslogik übernommen.
+
+Ein geerbter pull_request_target-Lauf des Claude-Labelers [43700158230](https://github.com/marco-taylor/evcc-heidelberg-1p3p/actions/runs/43700158230) scheiterte an fehlender Anthropic-Authentifizierung. Er stammt aus dem unveränderten master und ist kein neuer Heidelberg-Check. Die Dateien sind im vorgeschlagenen Branch archiviert; master und seine Einstellungen wurden nicht geändert. Es wurden keine fremden API-Zugangsdaten eingerichtet.
 
 ## Lokales Docker-Image und N100
 
