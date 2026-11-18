@@ -1,5 +1,47 @@
 # Sicherheitsprüfung Heidelberg-Phasenumschaltung
 
+## Aktualisierung: geprüfter Firmware-Korrekturentwurf
+
+Die folgenden ursprünglichen Befunde beschreiben unveränderte Ethernet-Firmware v1.2.0. Sie bleiben als historische Nachweise erhalten. Für den neuen Korrekturentwurf gelten die Ergebnisse dieses Abschnitts; weiterhin **keine Freigabe für Leistungsbetrieb**.
+
+Vor Änderungen wurde die Repository-Zuordnung erneut geprüft. Das Ethernet-Ziel ist inzwischen ein **nicht leeres** echtes Fork-Repository (ID 1462364686); `main` ist weiterhin exakt `1e6654ddc7d15faa034e8e2980d6c3aef9f9d238`. Es wurde kein leeres Repository initialisiert und kein Historien-/Tagimport vorgenommen.
+
+Firmwareänderungen liegen getrennt im [Firmware-PR #1](https://github.com/marco-taylor/heidelberg-1p3p-ethernet/pull/1), Branch `fix/safety-restart-feedback-v1.2.0`, Commit `4682a33e7852a995c9112705ae63503125735b18`. Der [vollständige Korrekturbericht](https://github.com/marco-taylor/heidelberg-1p3p-ethernet/blob/4682a33e7852a995c9112705ae63503125735b18/docs/HEIDELBERG_SAFETY_AUDIT.md) nennt die geänderten Funktionen, Tests, Wiederanlaufregeln und offenen Messungen. Dieser evcc-Folgebranch ändert nur Simulationseinbindung, CI-Beschreibung und Prüfbericht; keine evcc-Regelung oder Treiberlogik.
+
+| Anforderung / ursprünglicher Fund | Verhalten des Korrekturentwurfs |
+| --- | --- |
+| F01: Neustart-Timeout | Wiederholte Stoppsequenz statt Zwangsreset. Reset erst nach erfolgreichen Strom-/Lock-Schreibbefehlen und frischem Status 10 mit drei Nullströmen; alternativ bei bereits ausgeschalteten Ausgängen mit stabiler Aus-Rückmeldung. |
+| F02: Web-/OTA-Fallback | Kein direktes `esp_restart()` in Webpfaden; alle führen zur gleichen Stoppbarriere. OTA verlangt Stoppbestätigung vor Löschen/Schreiben der Partition. Timerfehler umgehen sie nicht. |
+| F03: Entprell-Unterlauf | Aktivzustand separat vom Zeitstempel, eine Uhrabfrage je Aufruf. Tests für gerade Zeit, Nullzeit, Unterbrechung und uint32-Überlauf. |
+| F04: falsche einzelne Rückmeldung | Vergleich mit Soll im Betrieb und bestätigter Stellung in Übergängen. Stabile Aus-Rückmeldung und erneute Prüfung unmittelbar vor Einschalten. |
+| F05: Sperrfehler | Fehlgeschlagener Lock-Befehl liefert Fehler und wird erneut versucht; weder Nullstrom noch eine erfolgreiche Stromvorgabe allein reichen zum Reset. |
+| F06: Entsperrfehler | Kein Running oder Erfolgstimestamp ohne gültige Entsperrbestätigung. Fehler und ungültige Statuswerte bleiben unbestätigt. |
+| Unerwarteter Wiederanlauf | Kaltstart, Brownout, Watchdog, Panic oder ungültiger Cache bleiben `AwaitingStart` mit ausgeschalteten Ausgängen. Bewusste Web-Auswahl 1P/3P nötig; Modbus darf diese Sperre nicht aufheben. |
+| Ladefreigabe nach erlaubtem Neustart | Automatisches Wiederherstellen nur nach bestätigtem kontrolliertem Software-Reset, mit zuvor bestätigter Phase und HEC2-Cache. Anfangs 0 A, auch bei gleichzeitig eintreffendem Cache-Strom. Danach kann evcc wieder freigeben. |
+| Register 4 | Bestätigte Phase 1/3, solange exklusives Kontaktmuster stimmt; sonst 0. Kein Auftragswert mehr. PR #2 meldet 0 bereits als `api.ErrNotAvailable`, erfindet also keinen Ersatzwert. |
+
+**55 harte Firmware-Simulationen bestanden: alle 28 bisherigen Fälle, acht frühere expected failures nun echte bestandene Regressionen, zusätzlich 27 Fälle.** Hinzugekommen sind Neustarts während aktiver Ladung und Übergängen, L2/L3-Strom, Bus-/Sperrfehler, verspätete Stoppbestätigung, Webtimerfehler, OTA-Stoppbarriere, Reset-Wiederanlaufsperren und Boot-Handover bei gleichzeitigem Strombefehl. Kein erwarteter Fehler und kein übersprungener Test.
+
+Die Simulation kompiliert tatsächliche C++-Funktionen des Firmware-Commits. Der evcc-Wrapper prüft SHA256 aller heruntergeladenen Quellen und des Testprogramms, bevor er es ausführt. Die OTA-HTTP-Reihenfolge wird zusätzlich statisch geprüft; Timer und Controller-Stopp werden simuliert, nicht der gesamte HTTP-/Flash-Stack. GPIO/Modbus/Uhr/CRC/Reset sind Host-Stubs, kein vollständiges ESP32-/Nebenläufigkeitsmodell.
+
+```sh
+python3 scripts/heidelberg_safety_sim.py --fetch-pinned
+# Alternativ: lokale, identisch gehashte Quellen
+python3 scripts/heidelberg_safety_sim.py --firmware-root /mnt/nvme/appdata/codex-workspace/heidelberg-1p3p-ethernet
+```
+
+Vollständiger lokaler ESP-IDF-v5.5.6-Build einschließlich Weboberfläche erfolgreich, App 1.065.728 Byte, 19 % OTA-Platz frei. Isolierte Containerbasis `espressif/idf@sha256:bf72fe7a15c22849a9a94147301165a545fb8905d97c176cf748e3e4614cac84`; drei Produktionsdateien bytegleich mit dem PR. Build-Abbild SHA256 `a11db460fb0cc27995e4c95455cb81c2668183cc6bc6402fe4d155ef96b0e8fb` (lokaler Prüfbuild, keine veröffentlichte Firmware und keine Zusage bitidentischer Reproduktion).
+
+**Wesentliche verbleibende Grenzen:** Brownout/Watchdog/Panic können Ausgänge bereits im Reset unter Last abfallen lassen; Software verhindert das nicht. Die vorhandene Fault-Notreaktion schaltet weiterhin unmittelbar ab und garantiert dabei keinen Nullstrom. Boot-ROM-/GPIO-Impulse, reale Verriegelung und Hilfskontakte, klebende Kontakte, Strommessverzug und Wallbox-Failsafe beim Wiederanlauf benötigen unabhängige Hardwaremessungen. Die Web-Startbedingung ersetzt weder physische Wartungssperre noch Zugangsschutz.
+
+**Kompatibilitätsfolge:** Register 4 und manueller Wiederanlauf ändern bewusst das Sicherheitsverhalten. Falls evcc während `AwaitingStart` seine Fähigkeiten erkennt, kann die Umschaltfähigkeit fehlen; nach bewusster Web-Freigabe und bestätigter Phase evcc erneut initialisieren. Kein produktiver Container wurde dafür angefasst. Eine erfolgreiche Simulation ist keine Freigabe für echten Lastbetrieb.
+
+Kein Merge, keine Tags/Releases, kein Docker-Image veröffentlicht, keine Installation und kein Hardwarezugriff. CI-Ergebnisse und PR-Verknüpfungen werden im Folge-PR nach Abschluss der Prüfungen dokumentiert.
+
+---
+
+## Ursprünglicher Auditstand: unveränderte v1.2.0
+
 Stand: 18.11.2026. Ergebnis: **keine Freigabe für den Leistungsbetrieb**. Der Audit ergänzt Tests und Dokumentation, ändert aber weder evcc-Regelung noch Firmware-Schaltlogik. Softwarebefunde und Hardwarefragen werden unten getrennt bewertet.
 
 ## Geprüfte Stände
