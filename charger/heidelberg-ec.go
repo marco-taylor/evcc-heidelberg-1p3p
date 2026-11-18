@@ -119,6 +119,7 @@ func NewHeidelbergEC(ctx context.Context, settings modbus.Settings) (api.Charger
 		if phases == 3 || phases == 1 {
 			log.DEBUG.Println("detected phase switch")
 			implement.Has(wb, implement.PhaseSwitcher(wb.phases1p3p))
+			implement.Has(wb, implement.PhaseGetter(wb.getPhases))
 		}
 	}
 	return wb, nil
@@ -343,4 +344,19 @@ func (wb *HeidelbergEC) WakeUp() error {
 func (wb *HeidelbergEC) phases1p3p(phases int) error {
 	_, err := wb.conn.WriteSingleRegister(hecRegFirmware, uint16(phases))
 	return err
+}
+
+func (wb *HeidelbergEC) getPhases() (int, error) {
+	b, err := wb.conn.ReadHoldingRegisters(hecRegFirmware, 1)
+	if err != nil {
+		return 0, err
+	}
+
+	// The bridge reports its phase setpoint, not an independent measurement.
+	switch phases := binary.BigEndian.Uint16(b); phases {
+	case 1, 3:
+		return int(phases), nil
+	default:
+		return 0, api.ErrNotAvailable
+	}
 }

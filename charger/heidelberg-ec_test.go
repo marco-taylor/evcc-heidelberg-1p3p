@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func heidelbergTestBridge(t *testing.T, phases uint16, absent, failWrite bool) (modbus.Settings, <-chan []byte) {
+func heidelbergTestBridge(t *testing.T, phases uint16, absent, failWrite bool, phaseRead ...func() (uint16, byte)) (modbus.Settings, <-chan []byte) {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -54,6 +54,16 @@ func heidelbergTestBridge(t *testing.T, phases uint16, absent, failWrite bool) (
 				res = []byte{3, 2, 0, 0}
 			case len(req) == 5 && req[0] == 3 && binary.BigEndian.Uint16(req[1:]) == hecRegFirmware:
 				res = []byte{3, 2, byte(phases >> 8), byte(phases)}
+				if len(phaseRead) > 0 {
+					value, exception := phaseRead[0]()
+					if exception == 0xff {
+						return
+					}
+					res = []byte{3, 2, byte(value >> 8), byte(value)}
+					if exception != 0 {
+						res = []byte{0x83, exception}
+					}
+				}
 				if absent {
 					res = []byte{0x83, 2}
 				}
@@ -107,10 +117,63 @@ func TestHeidelbergPhaseSwitchDetection(t *testing.T) {
 			require.NoError(t, err)
 			_, ok := api.Cap[api.PhaseSwitcher](wb)
 			assert.Equal(t, tc.want, ok)
+			_, getter := api.Cap[api.PhaseGetter](wb)
+			assert.Equal(t, tc.want, getter)
 			heidelbergRequest(t, requests, []byte{16, 1, 2, 0, 1, 2, 0, 4})
 			heidelbergRequest(t, requests, []byte{3, 1, 1, 0, 1})
 			heidelbergRequest(t, requests, []byte{3, 0, 4, 0, 1})
 			assert.Empty(t, requests, "detection must not send phase-switch writes")
+		})
+	}
+}
+
+func TestHeidelbergPhaseGetter(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		phases    uint16
+		exception byte
+		invalid   bool
+	}{
+		{name: "one phase", phases: 1},
+		{name: "three phases", phases: 3},
+		{name: "zero", invalid: true},
+		{name: "two phases", phases: 2, invalid: true},
+		{name: "unexpected register", phases: 0xffff, invalid: true},
+		{name: "Modbus exception", exception: 4},
+		{name: "connection closed", exception: 0xff},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sponsor.SetSubjectForTest(t, "test")
+			reads := 0
+			settings, requests := heidelbergTestBridge(t, 1, false, false, func() (uint16, byte) {
+				reads++
+				if reads == 1 {
+					return 1, 0
+				}
+				return tc.phases, tc.exception
+			})
+			wb, err := NewHeidelbergEC(t.Context(), settings)
+			require.NoError(t, err)
+			heidelbergRequest(t, requests, []byte{16, 1, 2, 0, 1, 2, 0, 4})
+			heidelbergRequest(t, requests, []byte{3, 1, 1, 0, 1})
+			heidelbergRequest(t, requests, []byte{3, 0, 4, 0, 1})
+			getter, ok := api.Cap[api.PhaseGetter](wb)
+			require.True(t, ok)
+			phases, err := getter.GetPhases()
+			switch {
+			case tc.invalid:
+				require.ErrorIs(t, err, api.ErrNotAvailable)
+				assert.Zero(t, phases)
+			case tc.exception != 0:
+				require.Error(t, err)
+				assert.NotErrorIs(t, err, api.ErrNotAvailable)
+				assert.Zero(t, phases)
+			default:
+				require.NoError(t, err)
+				assert.Equal(t, int(tc.phases), phases)
+			}
+			heidelbergRequest(t, requests, []byte{3, 0, 4, 0, 1})
+			assert.Empty(t, requests, "phase feedback must not write or return the detection cache")
 		})
 	}
 }
