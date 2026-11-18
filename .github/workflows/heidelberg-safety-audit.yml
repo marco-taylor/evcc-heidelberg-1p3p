@@ -1,0 +1,45 @@
+name: Heidelberg firmware safety simulation
+
+on:
+  pull_request:
+    paths:
+      - scripts/heidelberg_safety_sim.py
+      - docs/HEIDELBERG_SAFETY_AUDIT.md
+      - .github/workflows/heidelberg-safety-audit.yml
+      - core/loadpoint_heidelberg_safety_test.go
+      - charger/heidelberg-ec.go
+      - charger/heidelberg-ec_test.go
+      - core/loadpoint_phases.go
+      - core/loadpoint.go
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulation:
+    name: Pinned firmware fault injection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Simulate original firmware functions and expose known safety gaps
+        run: python3 scripts/heidelberg_safety_sim.py --fetch-pinned
+
+  evcc-race:
+    name: Heidelberg and phase synchronization race tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: Prepare embedded assets
+        run: mkdir -p dist && touch dist/empty
+      - name: Test Heidelberg and phase synchronization without hardware
+        run: go test -race -tags=release -run '^TestHeidelberg|^TestSyncCharger' ./charger ./core

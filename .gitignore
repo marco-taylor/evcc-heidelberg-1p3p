@@ -9,6 +9,7 @@ __debug_bin*
 *.gz
 !util/discovery/oui.txt.gz
 *.py
+!scripts/heidelberg_safety_sim.py
 testdata/**/*
 *.log
 *.json
