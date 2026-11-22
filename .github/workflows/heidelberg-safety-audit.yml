@@ -11,6 +11,14 @@ on:
       - charger/heidelberg-ec_test.go
       - core/loadpoint_phases.go
       - core/loadpoint.go
+      - api/error.go
+      - charger/heidelberg_safety1_test.go
+      - core/loadpoint_heidelberg_tcp_test.go
+      - core/circuit/circuit_test.go
+      - internal/heidelbergtest/**
+      - scripts/heidelberg_dual_runtime.py
+      - scripts/test_heidelberg_docker.sh
+      - tests/heidelberg-dual-runtime.evcc.yaml
   workflow_dispatch:
 
 permissions:
@@ -42,4 +50,4 @@ jobs:
       - name: Prepare embedded assets
         run: mkdir -p dist && touch dist/empty
       - name: Test Heidelberg and phase synchronization without hardware
-        run: go test -race -tags=release -run '^TestHeidelberg|^TestSyncCharger' ./charger ./core
+        run: go test -race -tags=release ./charger ./core ./core/circuit ./api

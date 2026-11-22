@@ -53,3 +53,48 @@ func TestHeidelbergPhaseFeedbackSafety(t *testing.T) {
 		})
 	}
 }
+
+func TestHeidelbergConfirmedFeedbackInvalidation(t *testing.T) {
+	for _, err := range []error{api.ErrPhaseStateUnknown, errors.Join(api.ErrPhaseStateUnknown, api.ErrNotAvailable), errors.Join(api.ErrPhaseStateUnknown, errors.New("Modbus timeout"))} {
+		t.Run(err.Error(), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			getter := api.NewMockPhaseGetter(ctrl)
+			charger := struct {
+				api.Charger
+				api.PhaseSwitcher
+				api.PhaseGetter
+			}{api.NewMockCharger(ctrl), api.NewMockPhaseSwitcher(ctrl), getter}
+			getter.EXPECT().GetPhases().Return(0, err)
+			lp := &Loadpoint{log: util.NewLogger("confirmed"), bus: evbus.New(), clock: clock.New(), charger: charger, phases: 3, measuredPhases: 3}
+			_ = lp.syncChargerPhases(true)
+			assert.Zero(t, lp.GetPhases())
+			assert.Zero(t, lp.GetMeasuredPhases())
+		})
+	}
+}
+
+func TestHeidelbergPendingSwitchIsNotConfirmation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	cp := api.NewMockPhaseSwitcher(ctrl)
+	charger := struct {
+		api.Charger
+		api.PhaseSwitcher
+	}{api.NewMockCharger(ctrl), cp}
+	cp.EXPECT().Phases1p3p(3).Return(errors.Join(api.ErrPhaseSwitchPending, api.ErrPhaseStateUnknown))
+	lp := &Loadpoint{log: util.NewLogger("pending"), bus: evbus.New(), clock: clock.NewMock(), charger: charger, phases: 1, measuredPhases: 1}
+	require.NoError(t, lp.scalePhases(3))
+	assert.Zero(t, lp.GetPhases(), "acknowledged request is not a confirmed 3P configuration")
+	assert.Zero(t, lp.GetMeasuredPhases())
+	assert.Equal(t, lp.clock.Now(), lp.phasesSwitched)
+}
+
+func TestHeidelbergStatusErrorInvalidatesFeedback(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	charger := api.NewMockCharger(ctrl)
+	charger.EXPECT().Status().Return(api.StatusNone, errors.Join(api.ErrPhaseStateUnknown, errors.New("ESP32 reset")))
+	lp := &Loadpoint{log: util.NewLogger("reset"), bus: evbus.New(), clock: clock.New(), charger: charger, phases: 3, measuredPhases: 3}
+	_, err := lp.getStatusChanges()
+	require.ErrorIs(t, err, api.ErrPhaseStateUnknown)
+	assert.Zero(t, lp.GetPhases())
+	assert.Zero(t, lp.GetMeasuredPhases())
+}

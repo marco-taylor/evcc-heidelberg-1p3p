@@ -20,7 +20,9 @@ package charger
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/evcc-io/evcc/api"
@@ -28,15 +30,22 @@ import (
 	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/modbus"
 	"github.com/evcc-io/evcc/util/sponsor"
+	gridx "github.com/grid-x/modbus"
 )
 
 // HeidelbergEC charger implementation
 type HeidelbergEC struct {
 	implement.Caps
-	log     *util.Logger
-	conn    *modbus.Connection
-	current uint16
-	wakeup  bool
+	log              *util.Logger
+	conn             *modbus.Connection
+	current          uint16
+	wakeup           bool
+	mu               sync.Mutex
+	ctx              context.Context
+	phaseFeedback    bool
+	initialized      bool
+	heartbeatStarted bool
+	pendingPhases    int
 }
 
 const (
@@ -65,21 +74,28 @@ func init() {
 
 // NewHeidelbergECFromConfig creates a HeidelbergEC charger from generic config
 func NewHeidelbergECFromConfig(ctx context.Context, other map[string]any) (api.Charger, error) {
-	cc := modbus.Settings{
+	cc := struct {
+		modbus.Settings `mapstructure:",squash"`
+		PhaseFeedback   bool
+	}{Settings: modbus.Settings{
 		ID: 1,
 		// https://github.com/evcc-io/evcc/issues/15437
 		Delay: 100 * time.Millisecond,
-	}
+	}}
 
 	if err := util.DecodeOther(other, &cc); err != nil {
 		return nil, err
 	}
 
-	return NewHeidelbergEC(ctx, cc)
+	return newHeidelbergEC(ctx, cc.Settings, cc.PhaseFeedback)
 }
 
 // NewHeidelbergEC creates HeidelbergEC charger
 func NewHeidelbergEC(ctx context.Context, settings modbus.Settings) (api.Charger, error) {
+	return newHeidelbergEC(ctx, settings, false)
+}
+
+func newHeidelbergEC(ctx context.Context, settings modbus.Settings, phaseFeedback bool) (api.Charger, error) {
 	conn, err := settings.Connection(ctx)
 	if err != nil {
 		return nil, err
@@ -93,42 +109,61 @@ func NewHeidelbergEC(ctx context.Context, settings modbus.Settings) (api.Charger
 	conn.Logger(log.TRACE)
 
 	wb := &HeidelbergEC{
-		Caps:    implement.New(),
-		log:     log,
-		conn:    conn,
-		current: 60, // assume min current
+		Caps:          implement.New(),
+		log:           log,
+		conn:          conn,
+		current:       60, // assume min current
+		ctx:           ctx,
+		phaseFeedback: phaseFeedback,
 	}
-
-	// disable standby to prevent comm loss
-	if err := wb.set(hecRegStandbyConfig, hecStandbyDisabled); err != nil {
+	if phaseFeedback {
+		implement.Has(wb, implement.PhaseSwitcher(wb.phases1p3p))
+		implement.Has(wb, implement.PhaseGetter(wb.getPhases))
+		return wb, nil
+	}
+	if err := wb.initialize(); err != nil {
 		return nil, err
 	}
-
-	// get failsafe timeout from charger
-	b, err := wb.conn.ReadHoldingRegisters(hecRegTimeoutConfig, 1)
-	if err != nil {
-		return nil, fmt.Errorf("failsafe timeout: %w", err)
-	}
-	if u := binary.BigEndian.Uint16(b) / 4; u > 0 {
-		go wb.heartbeat(ctx, time.Duration(u)*time.Millisecond)
-	}
-
 	b, noSwitchErr := wb.conn.ReadHoldingRegisters(hecRegFirmware, 1)
-	if noSwitchErr == nil {
+	if noSwitchErr == nil && len(b) == 2 {
 		phases := binary.BigEndian.Uint16(b)
 		if phases == 3 || phases == 1 {
 			log.DEBUG.Println("detected phase switch")
 			implement.Has(wb, implement.PhaseSwitcher(wb.phases1p3p))
-			implement.Has(wb, implement.PhaseGetter(wb.getPhases))
 		}
 	}
 	return wb, nil
 }
 
+func (wb *HeidelbergEC) initialize() error {
+
+	// disable standby to prevent comm loss
+	if err := wb.set(hecRegStandbyConfig, hecStandbyDisabled); err != nil {
+		return err
+	}
+
+	// get failsafe timeout from charger
+	b, err := wb.conn.ReadHoldingRegisters(hecRegTimeoutConfig, 1)
+	if err != nil {
+		return fmt.Errorf("failsafe timeout: %w", err)
+	}
+	if len(b) != 2 {
+		return fmt.Errorf("invalid failsafe response length: %d", len(b))
+	}
+	if u := binary.BigEndian.Uint16(b) / 4; u > 0 && !wb.heartbeatStarted {
+		wb.heartbeatStarted = true
+		go wb.heartbeat(wb.ctx, time.Duration(u)*time.Millisecond)
+	}
+	wb.initialized = true
+	return nil
+}
+
 func (wb *HeidelbergEC) heartbeat(ctx context.Context, timeout time.Duration) {
-	for tick := time.Tick(timeout); ; {
+	ticker := time.NewTicker(timeout)
+	defer ticker.Stop()
+	for {
 		select {
-		case <-tick:
+		case <-ticker.C:
 		case <-ctx.Done():
 			return
 		}
@@ -150,9 +185,17 @@ func (wb *HeidelbergEC) set(reg, val uint16) error {
 
 // Status implements the api.Charger interface
 func (wb *HeidelbergEC) Status() (api.ChargeStatus, error) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if err := wb.phaseReady(); err != nil {
+		return api.StatusNone, err
+	}
 	b, err := wb.conn.ReadInputRegisters(hecRegVehicleStatus, 1)
 	if err != nil {
-		return api.StatusNone, err
+		return api.StatusNone, wb.feedbackError(err)
+	}
+	if len(b) != 2 {
+		return api.StatusNone, wb.feedbackError(fmt.Errorf("invalid status response length: %d", len(b)))
 	}
 
 	sb := binary.BigEndian.Uint16(b)
@@ -169,6 +212,9 @@ func (wb *HeidelbergEC) Status() (api.ChargeStatus, error) {
 	case 6, 7:
 		return api.StatusC, nil
 	case 10:
+		if wb.phaseFeedback {
+			return api.StatusNone, errors.Join(api.ErrPhaseStateUnknown, fmt.Errorf("wallbox locked"))
+		}
 		// ensure RemoteLock is disabled after wake-up
 		b, err := wb.conn.ReadHoldingRegisters(hecRegRemoteLock, 1)
 		if err != nil {
@@ -195,9 +241,17 @@ func (wb *HeidelbergEC) Status() (api.ChargeStatus, error) {
 
 // Enabled implements the api.Charger interface
 func (wb *HeidelbergEC) Enabled() (bool, error) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if err := wb.phaseReady(); err != nil {
+		return false, err
+	}
 	b, err := wb.conn.ReadHoldingRegisters(hecRegAmpsConfig, 1)
 	if err != nil {
-		return false, err
+		return false, wb.feedbackError(err)
+	}
+	if len(b) != 2 {
+		return false, wb.feedbackError(fmt.Errorf("invalid current response length: %d", len(b)))
 	}
 
 	cur := binary.BigEndian.Uint16(b)
@@ -212,6 +266,13 @@ func (wb *HeidelbergEC) Enabled() (bool, error) {
 
 // Enable implements the api.Charger interface
 func (wb *HeidelbergEC) Enable(enable bool) error {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if enable {
+		if err := wb.phaseReady(); err != nil {
+			return err
+		}
+	}
 	var cur uint16
 	if enable {
 		cur = wb.current
@@ -234,6 +295,11 @@ var _ api.ChargerEx = (*HeidelbergEC)(nil)
 
 // MaxCurrentMillis implements the api.ChargerEx interface
 func (wb *HeidelbergEC) MaxCurrentMillis(current float64) error {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if err := wb.phaseReady(); err != nil {
+		return err
+	}
 	if current < 6 {
 		return fmt.Errorf("invalid current %.1f", current)
 	}
@@ -329,6 +395,11 @@ var _ api.Resurrector = (*HeidelbergEC)(nil)
 
 // WakeUp implements the api.Resurrector interface
 func (wb *HeidelbergEC) WakeUp() error {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if wb.phaseFeedback {
+		return fmt.Errorf("remote wake-up disabled for safety phase feedback")
+	}
 	// force status F by locking
 	if err := wb.set(hecRegRemoteLock, 0); err == nil {
 		// Takes at least ~10 sec to return to normal operation
@@ -342,21 +413,80 @@ func (wb *HeidelbergEC) WakeUp() error {
 
 // phases1p3p implements the api.PhaseSwitcher interface
 func (wb *HeidelbergEC) phases1p3p(phases int) error {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if phases != 1 && phases != 3 {
+		return fmt.Errorf("invalid phases: %d", phases)
+	}
+	if err := wb.phaseReady(); err != nil {
+		return err
+	}
+	if wb.phaseFeedback {
+		wb.pendingPhases = phases
+	}
 	_, err := wb.conn.WriteSingleRegister(hecRegFirmware, uint16(phases))
+	if wb.phaseFeedback {
+		if err != nil {
+			var exception *gridx.Error
+			if errors.As(err, &exception) && (exception.ExceptionCode == gridx.ExceptionCodeServerDeviceBusy ||
+				exception.ExceptionCode == gridx.ExceptionCodeIllegalDataAddress ||
+				exception.ExceptionCode == gridx.ExceptionCodeIllegalDataValue ||
+				exception.ExceptionCode == gridx.ExceptionCodeIllegalFunction) {
+				wb.pendingPhases = 0
+			}
+			return errors.Join(api.ErrPhaseStateUnknown, err)
+		}
+		return errors.Join(api.ErrPhaseStateUnknown, api.ErrPhaseSwitchPending)
+	}
 	return err
 }
 
 func (wb *HeidelbergEC) getPhases() (int, error) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	return wb.readPhases()
+}
+
+func (wb *HeidelbergEC) readPhases() (int, error) {
 	b, err := wb.conn.ReadHoldingRegisters(hecRegFirmware, 1)
 	if err != nil {
-		return 0, err
+		wb.initialized = false
+		return 0, errors.Join(api.ErrPhaseStateUnknown, err)
 	}
-
-	// The bridge reports its phase setpoint, not an independent measurement.
+	if len(b) != 2 {
+		return 0, errors.Join(api.ErrPhaseStateUnknown, fmt.Errorf("invalid phase response length: %d", len(b)))
+	}
 	switch phases := binary.BigEndian.Uint16(b); phases {
 	case 1, 3:
+		if wb.pendingPhases != 0 && int(phases) != wb.pendingPhases {
+			return 0, api.ErrPhaseStateUnknown
+		}
+		wb.pendingPhases = 0
 		return int(phases), nil
 	default:
-		return 0, api.ErrNotAvailable
+		wb.initialized = false
+		return 0, errors.Join(api.ErrPhaseStateUnknown, api.ErrNotAvailable)
 	}
+}
+
+func (wb *HeidelbergEC) phaseReady() error {
+	if !wb.phaseFeedback {
+		return nil
+	}
+	if _, err := wb.readPhases(); err != nil {
+		return err
+	}
+	if !wb.initialized {
+		if err := wb.initialize(); err != nil {
+			return errors.Join(api.ErrPhaseStateUnknown, err)
+		}
+	}
+	return nil
+}
+
+func (wb *HeidelbergEC) feedbackError(err error) error {
+	if wb.phaseFeedback {
+		return errors.Join(api.ErrPhaseStateUnknown, err)
+	}
+	return err
 }

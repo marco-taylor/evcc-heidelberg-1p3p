@@ -915,6 +915,7 @@ func (lp *Loadpoint) setAndPublishEnabled(enabled bool) {
 func (lp *Loadpoint) syncCharger() error {
 	enabled, err := lp.charger.Enabled()
 	if err != nil {
+		lp.invalidatePhaseFeedback(err)
 		return fmt.Errorf("charger enabled: %w", err)
 	}
 
@@ -1348,6 +1349,7 @@ func (lp *Loadpoint) getStatusChanges() ([]api.ChargeStatus, error) {
 
 	status, err := lp.charger.Status()
 	if err != nil {
+		lp.invalidatePhaseFeedback(err)
 		return nil, fmt.Errorf("charger status: %w", err)
 	}
 
@@ -1512,6 +1514,11 @@ func (lp *Loadpoint) scalePhases(phases int) error {
 
 		// switch phases
 		if err := cp.Phases1p3p(phases); err != nil {
+			lp.invalidatePhaseFeedback(err)
+			if errors.Is(err, api.ErrPhaseSwitchPending) {
+				lp.phasesSwitched = lp.clock.Now()
+				return nil
+			}
 			return fmt.Errorf("switch phases: %w", err)
 		}
 

@@ -1,4 +1,5 @@
 .cache
+.git
 .claude
 .docker-cache
 .idea

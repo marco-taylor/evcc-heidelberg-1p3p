@@ -23,6 +23,9 @@ RUN make ui
 # STEP 2 build executable binary
 FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS builder
 
+ARG BUILD_GOMAXPROCS=2
+ENV GOMAXPROCS=${BUILD_GOMAXPROCS}
+
 # Install git + SSL ca certificates.
 # Git is required for fetching the dependencies.
 # Ca-certificates is required to call HTTPS endpoints.
@@ -61,7 +64,7 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 ARG GOARM=${TARGETVARIANT#v}
-ARG TAG_NAME=0.320.0-dev.heidelberg.7b590b84
+ARG TAG_NAME=0.320.0-dev.heidelberg.safety1.dual
 ARG SHA=unknown
 ENV GOAMD64=v1
 
@@ -89,8 +92,6 @@ COPY --from=builder /build/evcc /usr/local/bin/evcc
 
 COPY packaging/docker/bin/* /app/
 
-# mDNS
-EXPOSE 5353/udp
 # EEBus
 EXPOSE 4712/tcp
 # mDNS
@@ -113,7 +114,7 @@ HEALTHCHECK \
   --timeout=5s \
   --start-period=30s \
   --retries=3 \
-  CMD wget -qO /dev/null http://localhost:7070 || exit 1
+  CMD wget -qO /dev/null "http://localhost:${EVCC_NETWORK_PORT:-7070}" || exit 1
 
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 CMD [ "evcc" ]

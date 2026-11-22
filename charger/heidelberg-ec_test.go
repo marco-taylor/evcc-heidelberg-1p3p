@@ -118,7 +118,7 @@ func TestHeidelbergPhaseSwitchDetection(t *testing.T) {
 			_, ok := api.Cap[api.PhaseSwitcher](wb)
 			assert.Equal(t, tc.want, ok)
 			_, getter := api.Cap[api.PhaseGetter](wb)
-			assert.Equal(t, tc.want, getter)
+			assert.False(t, getter)
 			heidelbergRequest(t, requests, []byte{16, 1, 2, 0, 1, 2, 0, 4})
 			heidelbergRequest(t, requests, []byte{3, 1, 1, 0, 1})
 			heidelbergRequest(t, requests, []byte{3, 0, 4, 0, 1})
@@ -157,9 +157,8 @@ func TestHeidelbergPhaseGetter(t *testing.T) {
 			heidelbergRequest(t, requests, []byte{16, 1, 2, 0, 1, 2, 0, 4})
 			heidelbergRequest(t, requests, []byte{3, 1, 1, 0, 1})
 			heidelbergRequest(t, requests, []byte{3, 0, 4, 0, 1})
-			getter, ok := api.Cap[api.PhaseGetter](wb)
-			require.True(t, ok)
-			phases, err := getter.GetPhases()
+			getter := wb.(*HeidelbergEC)
+			phases, err := getter.getPhases()
 			switch {
 			case tc.invalid:
 				require.ErrorIs(t, err, api.ErrNotAvailable)

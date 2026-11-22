@@ -20,10 +20,23 @@ requirements:
   evcc: ["sponsorship"]
 params:
   - name: modbus
-    choice: ["rs485"]
+    choice: ["rs485", "tcpip"]
     id: 1
     baudrate: 19200
     comset: 8E1
+  - name: phasefeedback
+    type: bool
+    default: false
+    advanced: true
+    description:
+      de: Bestätigte Phasenrückmeldung der Safety-Firmware
+      en: Confirmed phase feedback from safety firmware
+    help:
+      de: Nur für Heidelberg-1P3P v1.2.0-safety.1 mit bestätigter Register-4-Rückmeldung aktivieren. Alte Brücken melden dort nur einen Auftrag.
+      en: Enable only for Heidelberg-1P3P v1.2.0-safety.1 with confirmed register 4 feedback. Older bridges only report a request.
 render: |
   type: heidelberg
   {{- include "modbus" . }}
+  {{- if .phasefeedback }}
+  phasefeedback: true
+  {{- end }}
