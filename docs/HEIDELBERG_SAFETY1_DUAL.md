@@ -84,3 +84,32 @@ Keine Freigabe für elektrischen Leistungsbetrieb. Kein Merge und kein Image-Pus
 Entwurfs-PR: https://github.com/marco-taylor/evcc-heidelberg-1p3p/pull/6 . Basis master 9118fafa720cbcfcd0059a39ec4b61c6a39cd840; frühere PRs bleiben unverändert. Die anfängliche GitHub-Revision 81d384443351be667b5b8d6d4a47c06ff3d291dd wird für die Testskriptkorrektur fortgeschrieben. CI-Ergebnisse sind im PR unter Checks verbindlich nachvollziehbar; zum Zeitpunkt dieser lokalen Dokumentation läuft die erneute GitHub-Prüfung noch. Ausstehende oder fehlgeschlagene Checks dürfen nicht als bestanden gewertet werden.
 
 Lokale vollständige Logs liegen im Git-Metadatenverzeichnis: `.git/safety1-dual-all-tests.log`, `.git/safety1-dual-firmware.log`, `.git/safety1-dual-docker-build.log` und `.git/safety1-dual-runtime-retry.log`. Sie werden nicht in das öffentliche Repository oder Docker-Image aufgenommen. Der Fehlversuch bleibt in `.git/safety1-dual-runtime.log` nachvollziehbar. Die CI wiederholt die relevanten Prüfungen öffentlich und veröffentlicht auf Pull Requests kein Image.
+
+## Nachträglich ausdrücklich freigegebene GHCR-Veröffentlichung
+
+Am 22.11.2026 wurde nach separatem Nutzerauftrag ausschließlich die Safety-Dual-Version veröffentlicht. Die oben dokumentierte ursprüngliche Einschränkung ohne Registry-Upload bezog sich auf den vorherigen Entwicklungsauftrag. PR #6 bleibt unverändert als Entwurf offen und ungemergt; master bleibt 9118fafa720cbcfcd0059a39ec4b61c6a39cd840. Kein produktiver Einsatz und keine elektrische Sicherheitsfreigabe.
+
+Veröffentlichte Image-Namen:
+
+- `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:safety1-dual`
+- `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:safety1-dual-58a68a176`
+
+Beide Tags zeigen auf denselben Registry-Manifest-Digest:
+
+`sha256:f16721117ddb1183b0b06b287efc50bc5c0c2e72b4d0eaed74f43778d4fb9aed`
+
+Version: `0.320.0-dev.heidelberg.safety1.dual`. Quellcommit: `58a68a176f685c5cd2295bfd1580ed305782e4e2`. Plattform: `linux/amd64`. OCI-Revision und Version wurden sowohl im Workflow als auch unabhängig über die anonym lesbare Registry-Konfiguration geprüft. Konfigurations-/Image-ID: `sha256:dcc0e73650c2206e6a0a06291eba4bbdd693f7bfee53704cbfec815d73d0da48`; diese ist vom Registry-Manifest-Digest zu unterscheiden.
+
+[Erfolgreiche Veröffentlichungs-Pipeline](https://github.com/marco-taylor/evcc-heidelberg-1p3p/actions/runs/45033440864), Verwaltungscommit `55c2d3a911c60e55e87c09d9e64dd67c413de01e` auf separatem Branch `publish/heidelberg-safety1-dual-58a68a176`. Dieser enthält einen zusätzlichen, auf diese Veröffentlichung begrenzten Workflow. Der Build checkt ausdrücklich den Quellcommit 58a68a176 aus, nicht den Verwaltungscommit oder einen beweglichen Branch. Der Workflow wurde mit actionlint 1.7.12 geprüft. Keine Änderungen an den Anwendungsquellen für diese Veröffentlichung.
+
+Erneut ausgeführt: vollständige Go-Pakete, Race-Tests für charger/core/core-circuit/api, alle 55 gepinnten Firmware-Simulationen, vollständiger Docker-Build einschließlich Weboberfläche, Starttest ohne Netzwerk sowie isolierter Zwei-Ladepunkt-PV-/Lastmanagementtest. Alle erfolgreich. Zusätzlich bestätigt das Eingangstor die 13 erfolgreichen erforderlichen PR-Checks auf dem exakten Quellcommit; dort sind unter anderem 433 Integrationstests und 248 UI-Tests nachgewiesen. Der Registry-Upload übernimmt das bereits getestete Image-Artefakt unverändert, ohne einen zweiten Build.
+
+Authentifizierung ausschließlich über die bestehende GitHub-Anbindung und den kurzlebigen GITHUB_TOKEN in Actions. `packages: write` besitzt nur der anschließende Veröffentlichungsjob. Das bestehende Paket war bereits öffentlich; keine Paket-Sichtbarkeitsänderung oder neue Zugangsdaten erforderlich. Der Workflow verweigert das Überschreiben eines bereits vorhandenen Commit-Tags. Für eine dauerhaft eindeutige Bindung den vollständigen Digest verwenden, beispielsweise:
+
+`ghcr.io/marco-taylor/evcc-heidelberg-1p3p@sha256:f16721117ddb1183b0b06b287efc50bc5c0c2e72b4d0eaed74f43778d4fb9aed`
+
+Öffentliche Lesbarkeit und identische Tag-Digests wurden in Actions und anschließend unabhängig anonym direkt auf Unraid geprüft. Beide Tags wurden auf Unraid mit einer neu erstellten leeren Docker-Anmeldekonfiguration vollständig heruntergeladen. Der Versionsaufruf ohne Netzwerk und der isolierte App-Lauf mit dem tatsächlich heruntergeladenen Image bestanden erneut. Dieser App-Test verwendet generische HTTP-Simulatoren; die tatsächlichen Heidelberg-Treiber und Register werden separat über Modbus TCP in den Go-Tests geprüft. Kein Sponsorisierungs-Bypass, keine Produktionskonfiguration und keine Gerätezugriffe.
+
+`latest` wurde nicht veröffentlicht oder überschrieben und hat vor/nach der Veröffentlichung denselben Digest `sha256:cbf9b69c447a745854f3cf4b3bd5ad492d347042bd5f15bdb2f35074f9f8b65e`. Der produktive Container bleibt dieselbe Instanz mit Startzeit 2026-11-22T13:03:38Z. Alle eigens gestarteten Testcontainer und Testnetze sind entfernt.
+
+Lokale Nachweise: `.git/safety1-dual-ghcr-public.json`, `.git/safety1-dual-ghcr-pull.log` und `.git/safety1-dual-ghcr-unraid-runtime.log`. Die weiterhin offenen Hardwareprüfungen dieses Berichts bleiben unverändert erforderlich. Keine Firmware geflasht, keine Hardware angesteuert, keine SSH-Schlüssel erstellt und keine produktiven Container verändert.
