@@ -1,0 +1,94 @@
+name: Promote approved Safety Dual digest to latest
+
+on:
+  push:
+    branches: [publish/heidelberg-safety1-latest-58a68a176]
+    paths: [.github/workflows/heidelberg-safety1-latest.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heidelberg-safety1-latest-promotion
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/marco-taylor/evcc-heidelberg-1p3p
+  TARGET_DIGEST: sha256:f16721117ddb1183b0b06b287efc50bc5c0c2e72b4d0eaed74f43778d4fb9aed
+  PREVIOUS_DIGEST: sha256:cbf9b69c447a745854f3cf4b3bd5ad492d347042bd5f15bdb2f35074f9f8b65e
+  SOURCE_COMMIT: 58a68a176f685c5cd2295bfd1580ed305782e4e2
+  VERSION: 0.320.0-dev.heidelberg.safety1.dual
+
+jobs:
+  promote:
+    name: Retag exact existing manifest without rebuilding
+    if: github.repository == 'marco-taylor/evcc-heidelberg-1p3p' && github.ref == 'refs/heads/publish/heidelberg-safety1-latest-58a68a176'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Verify and copy the exact manifest to latest
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+          repo = os.environ['IMAGE'].removeprefix('ghcr.io/')
+          target = os.environ['TARGET_DIGEST']
+          previous = os.environ['PREVIOUS_DIGEST']
+          endpoint = 'https://ghcr.io/v2/' + repo
+          accept = 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
+          def token(scope, authenticated=False):
+              headers = {}
+              if authenticated:
+                  credentials = os.environ['GITHUB_ACTOR'] + ':' + os.environ['REGISTRY_PASSWORD']
+                  headers['Authorization'] = 'Basic ' + base64.b64encode(credentials.encode()).decode()
+              request = urllib.request.Request('https://ghcr.io/token?service=ghcr.io&scope=repository:' + repo + ':' + scope, headers=headers)
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)['token']
+          public_token = token('pull')
+          def manifest(ref):
+              request = urllib.request.Request(endpoint + '/manifests/' + ref, headers={'Authorization': 'Bearer ' + public_token, 'Accept': accept})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  raw = response.read()
+                  digest = response.headers['Docker-Content-Digest']
+                  assert digest == 'sha256:' + hashlib.sha256(raw).hexdigest(), 'Manifest hash differs'
+                  return digest, raw, response.headers['Content-Type']
+          digest, payload, media_type = manifest(target)
+          assert digest == target
+          for tag in ['safety1-dual', 'safety1-dual-58a68a176']:
+              assert manifest(tag)[0] == target, 'Safety tag changed: ' + tag
+          data = json.loads(payload)
+          assert 'config' in data and 'layers' in data, 'Expected the verified single-platform manifest'
+          request = urllib.request.Request(endpoint + '/blobs/' + data['config']['digest'], headers={'Authorization': 'Bearer ' + public_token})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              config = json.load(response)
+          assert config['os'] == 'linux' and config['architecture'] == 'amd64'
+          assert config['config']['Labels']['org.opencontainers.image.revision'] == os.environ['SOURCE_COMMIT']
+          assert config['config']['Labels']['org.opencontainers.image.version'] == os.environ['VERSION']
+          current = manifest('latest')[0]
+          assert current in [previous, target], 'Unexpected concurrent change to latest'
+          assert manifest(previous)[0] == previous, 'Previous image unavailable'
+          if current != target:
+              write_token = token('pull,push', authenticated=True)
+              request = urllib.request.Request(endpoint + '/manifests/latest', data=payload, method='PUT', headers={'Authorization': 'Bearer ' + write_token, 'Content-Type': media_type})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  assert response.status == 201
+                  assert response.headers['Docker-Content-Digest'] == target
+          for tag in ['latest', 'safety1-dual', 'safety1-dual-58a68a176']:
+              assert manifest(tag)[0] == target, 'Final digest differs: ' + tag
+          assert manifest(previous)[0] == previous, 'Previous image was removed'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              print('Latest promoted by copying the exact existing registry manifest. No build.', file=summary)
+              for key, value in [('Image', os.environ['IMAGE']), ('All three tags digest', target), ('Source commit', os.environ['SOURCE_COMMIT']), ('Version', os.environ['VERSION']), ('Previous image still available', previous)]:
+                  print(f'- {key}: `{value}`', file=summary)
+              print('- Safety tags unchanged; public anonymous manifest reads verified. No merge or hardware access.', file=summary)
+          print('LATEST_DIGEST=' + target)
+          PY
+      - name: Verify anonymous Docker pull of latest
+        run: |
+          mkdir -p "$RUNNER_TEMP/anonymous-docker"
+          docker --config "$RUNNER_TEMP/anonymous-docker" pull --platform linux/amd64 "$IMAGE:latest"
+          docker run --rm --network none --entrypoint evcc "$IMAGE:latest" --version | grep -F "$VERSION"
