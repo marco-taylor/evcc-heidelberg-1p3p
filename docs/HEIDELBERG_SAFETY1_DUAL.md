@@ -113,3 +113,19 @@ Authentifizierung ausschließlich über die bestehende GitHub-Anbindung und den 
 `latest` wurde nicht veröffentlicht oder überschrieben und hat vor/nach der Veröffentlichung denselben Digest `sha256:cbf9b69c447a745854f3cf4b3bd5ad492d347042bd5f15bdb2f35074f9f8b65e`. Der produktive Container bleibt dieselbe Instanz mit Startzeit 2026-11-22T13:03:38Z. Alle eigens gestarteten Testcontainer und Testnetze sind entfernt.
 
 Lokale Nachweise: `.git/safety1-dual-ghcr-public.json`, `.git/safety1-dual-ghcr-pull.log` und `.git/safety1-dual-ghcr-unraid-runtime.log`. Die weiterhin offenen Hardwareprüfungen dieses Berichts bleiben unverändert erforderlich. Keine Firmware geflasht, keine Hardware angesteuert, keine SSH-Schlüssel erstellt und keine produktiven Container verändert.
+
+## Später ausdrücklich freigegebene Umstellung von latest
+
+Am 22.11.2026 wurde nach einem weiteren Nutzerauftrag `latest` auf das bereits geprüfte Safety-Dual-Image gesetzt. Die zuvor dokumentierte Beibehaltung des alten latest-Digests beschreibt den vorherigen Auftrag und ist damit historisch. Es gab keinen neuen Anwendungsbuild und keine Änderungen an Anwendungsquellen.
+
+`ghcr.io/marco-taylor/evcc-heidelberg-1p3p:latest`, `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:safety1-dual` und `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:safety1-dual-58a68a176` besitzen jetzt identisch den Digest `sha256:f16721117ddb1183b0b06b287efc50bc5c0c2e72b4d0eaed74f43778d4fb9aed`.
+
+Version `0.320.0-dev.heidelberg.safety1.dual`, Quellcommit `58a68a176f685c5cd2295bfd1580ed305782e4e2`, linux/amd64 und Image-ID bleiben unverändert. Die Registry-Operation liest das vorhandene Manifest anhand dieses Digests, prüft seinen SHA256 über die unveränderten Bytes sowie Plattform und Versions-/Quellcommit-Labels und überträgt ausschließlich diese Bytes mit demselben Medientyp nach latest. Beide Safety-Tags werden nur gelesen und nicht neu geschrieben. Keine neue Manifest-Liste, keine Konvertierung und kein Build.
+
+[Erfolgreicher Actions-Nachweis](https://github.com/marco-taylor/evcc-heidelberg-1p3p/actions/runs/45036639266). Separater Verwaltungsbranch `publish/heidelberg-safety1-latest-58a68a176`, Workflowcommit `be6b4dedb304b0ece80200f046c9cbeae02a7c6b`. Authentifizierung allein über GITHUB_TOKEN mit Paketschreibrecht im begrenzten Actions-Job. Der Workflow wurde mit actionlint 1.7.12 geprüft; er enthält keinen Build und keinen Löschaufruf.
+
+Alle drei Tag-Digests wurden anschließend in Actions und unabhängig anonym auf Unraid verglichen. Docker pull von latest mit leerer Anmeldekonfiguration sowie Versionsaufruf ohne Netzwerk in Actions erfolgreich. Der bisherige Digest `sha256:cbf9b69c447a745854f3cf4b3bd5ad492d347042bd5f15bdb2f35074f9f8b65e` ist weiterhin anonym abrufbar; alte Image-Versionen wurden nicht gelöscht.
+
+Der produktive Unraid-Container wurde weder aktualisiert noch neu gestartet. Er bleibt dieselbe seit 2026-11-22T13:03:38Z laufende Instanz mit bisheriger Image-ID `sha256:3197da91bb4969d0f4fd84b134fdd24ca7f130bf992e42e2d5d5c3c337fa1b26`. Auch der lokale Docker-Tag latest auf Unraid wurde nicht umgestellt; die öffentliche Downloadprüfung erfolgte im Actions-Runner. PR #6 bleibt ungemergt, der Quellcommit unverändert. Keine Hardwarezugriffe, keine SSH-Schlüssel und keine elektrische Sicherheitsfreigabe. Die dokumentierten Hardwareprüfungen bleiben offen.
+
+Lokale zusätzliche Nachweise: `.git/safety1-dual-latest-before.json` und `.git/safety1-dual-latest-after.json`. Maßgeblich für eine dauerhaft feste Referenz bleibt der vollständige Registry-Digest.
