@@ -103,7 +103,7 @@ def eventually(label, condition, timeout=120):
 
 def check(base):
     state = lambda: json.loads(request("http://localhost:8080/state"))
-    eventually("UI and two loadpoints", lambda: len(json.loads(request(base + "/api/state"))["result"]["loadpoints"]) == 2)
+    eventually("UI and two loadpoints", lambda: len(json.loads(request(base + "/api/state"))["loadpoints"]) == 2)
     for index in (1, 2):
         request(f"{base}/api/loadpoints/{index}/mode/pv", post=True)
     eventually("both controllers charge from synthetic PV", lambda: all(m["power"] > 0 for m in state()["controllers"]))

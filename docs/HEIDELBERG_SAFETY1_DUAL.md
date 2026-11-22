@@ -69,3 +69,17 @@ Die 55 bestehenden Firmware-Hostsimulationen werden unverändert gegen den lokal
 - Die übrigen 67 Upstream-Commits und der Release-Backport 0.319.1 sind nicht vollständig übernommen. Ein späterer Versionswechsel benötigt eigene Regressionen; keine Behauptung, der Fork sei vollständig auf dem offiziellen aktuellen Release.
 
 Keine Freigabe für elektrischen Leistungsbetrieb. Kein Merge und kein Image-Push durch diesen Auftrag.
+
+## Tatsächliche lokale Ergebnisse am 22.11.2026
+
+- Vollständiger Go-Testlauf: `CGO_ENABLED=0 go test -tags=release ./...`, Exit 0. Zusätzlich Race-Tests für alle Pakete charger, core, core/circuit und api, Exit 0. Die zusätzlichen Heidelberg-TCP-/Kernprüfungen sind dabei enthalten.
+- Firmware-Wrapper gegen den lokalen Safety.1-Stand: 55/55 harte Regressionen, keine erwarteten Fehlschläge.
+- Vollständiger Docker-Build einschließlich neu gebauter Weboberfläche: Exit 0, linux/amd64. Lokaler Testtag `evcc-heidelberg:safety1-dual-test`, Version `0.320.0-dev.heidelberg.safety1.dual`, Image-ID `sha256:f2c2a8b649e1e64c3553fcc04c8c5cac20317795cccbd963d1163a0e2415f0a6`. Kein Registry-Upload, daher kein veröffentlichter Registry-Digest.
+- Das lokale Image trägt Produktionsquellcommit `097548d48a2a352e7a3e416917a399a3114a87f8`. Nachfolgende Änderungen betreffen ausschließlich Tests, CI und Dokumentation; die produktiven Go-/Template-/Dockerquellen sind identisch. Der GitHub-Build baut den jeweiligen PR-Commit separat.
+- Image-Versionsaufruf ohne Netzwerk: erfolgreich. Die erwartete Zeroconf-Diagnose bei vollständig fehlendem Netzwerk ist kein Hardwarezugriff. HTTP/Weboberfläche und konfigurierbarer Port 7071 im eigenen internen Testnetz erfolgreich geprüft.
+- Docker-App-Simulation: beide Ladepunkte mit PV aktiv; gemeinsames synthetisches Budget eingehalten; dynamische Verringerung von 18 auf 15 kW verarbeitet; danach 18 kW für den unabhängigen Wiederanlauf des zweiten Ladepunkts; erster Controller offline, zweiter separat stoppbar und wieder ladend; erster Controller nach Wiederkehr wieder steuerbar. Alle Prüfbedingungen bestanden.
+- Der erste Lauf des neu erstellten Docker-Testskripts scheiterte an der Annahme einer veralteten API-Hülle `result`. Korrigiert auf die tatsächliche direkte Antwort von `/api/state`; derselbe vollständige Test danach erfolgreich. Keine Änderung am Laufzeitprogramm dafür erforderlich.
+
+Entwurfs-PR: https://github.com/marco-taylor/evcc-heidelberg-1p3p/pull/6 . Basis master 9118fafa720cbcfcd0059a39ec4b61c6a39cd840; frühere PRs bleiben unverändert. Die anfängliche GitHub-Revision 81d384443351be667b5b8d6d4a47c06ff3d291dd wird für die Testskriptkorrektur fortgeschrieben. CI-Ergebnisse sind im PR unter Checks verbindlich nachvollziehbar; zum Zeitpunkt dieser lokalen Dokumentation läuft die erneute GitHub-Prüfung noch. Ausstehende oder fehlgeschlagene Checks dürfen nicht als bestanden gewertet werden.
+
+Lokale vollständige Logs liegen im Git-Metadatenverzeichnis: `.git/safety1-dual-all-tests.log`, `.git/safety1-dual-firmware.log`, `.git/safety1-dual-docker-build.log` und `.git/safety1-dual-runtime-retry.log`. Sie werden nicht in das öffentliche Repository oder Docker-Image aufgenommen. Der Fehlversuch bleibt in `.git/safety1-dual-runtime.log` nachvollziehbar. Die CI wiederholt die relevanten Prüfungen öffentlich und veröffentlicht auf Pull Requests kein Image.
