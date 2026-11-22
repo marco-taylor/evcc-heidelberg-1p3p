@@ -1,0 +1,181 @@
+name: Publish approved Heidelberg Safety Dual
+
+on:
+  push:
+    branches: [publish/heidelberg-safety1-dual-58a68a176]
+    paths: [.github/workflows/heidelberg-safety1-publish.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heidelberg-safety1-dual-publication
+  cancel-in-progress: false
+
+env:
+  SOURCE_COMMIT: 58a68a176f685c5cd2295bfd1580ed305782e4e2
+  VERSION: 0.320.0-dev.heidelberg.safety1.dual
+  IMAGE: ghcr.io/marco-taylor/evcc-heidelberg-1p3p
+  COMMIT_TAG: safety1-dual-58a68a176
+  ALIAS_TAG: safety1-dual
+
+jobs:
+  verify-build:
+    name: Verify and build exact approved commit
+    if: github.repository == 'marco-taylor/evcc-heidelberg-1p3p'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 58a68a176f685c5cd2295bfd1580ed305782e4e2
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify source, PR and original required checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test -z "$(git status --porcelain)"
+          gh api repos/marco-taylor/evcc-heidelberg-1p3p/pulls/6 > "$RUNNER_TEMP/pr.json"
+          gh api "repos/marco-taylor/evcc-heidelberg-1p3p/commits/$SOURCE_COMMIT/check-runs?per_page=100" > "$RUNNER_TEMP/checks.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          pr = json.loads((root / 'pr.json').read_text())
+          assert pr['head']['sha'] == os.environ['SOURCE_COMMIT'], 'PR source changed'
+          assert not pr['merged'] and pr['state'] == 'open', 'PR must remain unmerged'
+          required = {'Integration', 'Go tests', 'Docker linux/amd64', 'Clean', 'Build', 'Test', 'Lint', 'UI', 'Integration 1/3', 'Integration 2/3', 'Integration 3/3', 'Pinned firmware fault injection', 'Heidelberg and phase synchronization race tests'}
+          checks = json.loads((root / 'checks.json').read_text())['check_runs']
+          for name in required:
+              matches = [c for c in checks if c['name'] == name]
+              assert matches, f'Missing check: {name}'
+              newest = max(matches, key=lambda c: c['id'])
+              assert newest['status'] == 'completed' and newest['conclusion'] == 'success', f'Check not successful: {name}'
+          print(f'Verified {len(required)} successful required checks on exact source')
+          PY
+          grep -q 'implement.PhaseGetter(wb.getPhases)' charger/heidelberg-ec.go
+          grep -q 'implement.PhaseSwitcher(wb.phases1p3p)' charger/heidelberg-ec.go
+          grep -q 'name: phasefeedback' templates/definition/charger/heidelberg.yaml
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: Repeat all Go tests, relevant race tests and firmware simulations
+        run: |
+          mkdir -p dist && touch dist/empty
+          make test
+          go test -race -tags=release ./charger ./core ./core/circuit ./api
+          python3 scripts/heidelberg_safety_sim.py --fetch-pinned
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Build complete Linux AMD64 image including UI
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: evcc-heidelberg:safety1-publish-tested
+          build-args: |
+            TAG_NAME=0.320.0-dev.heidelberg.safety1.dual
+            SHA=58a68a176f685c5cd2295bfd1580ed305782e4e2
+          labels: |
+            org.opencontainers.image.revision=58a68a176f685c5cd2295bfd1580ed305782e4e2
+            org.opencontainers.image.version=0.320.0-dev.heidelberg.safety1.dual
+          cache-from: type=gha,scope=heidelberg-amd64
+          cache-to: type=gha,mode=max,scope=heidelberg-amd64
+      - name: Test the built image without hardware
+        run: |
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' evcc-heidelberg:safety1-publish-tested)" = linux/amd64
+          docker run --rm --network none --entrypoint evcc evcc-heidelberg:safety1-publish-tested --version | grep -F "$VERSION"
+          bash scripts/test_heidelberg_docker.sh evcc-heidelberg:safety1-publish-tested
+      - name: Export exactly the tested image
+        run: docker save evcc-heidelberg:safety1-publish-tested -o "$RUNNER_TEMP/image.tar"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: safety1-dual-tested-image
+          path: ${{ runner.temp }}/image.tar
+          retention-days: 3
+
+  publish:
+    name: Publish only approved Safety Dual tags
+    needs: verify-build
+    if: github.repository == 'marco-taylor/evcc-heidelberg-1p3p' && github.ref == 'refs/heads/publish/heidelberg-safety1-dual-58a68a176'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: safety1-dual-tested-image
+      - name: Load and verify the tested image identity
+        run: |
+          docker load -i image.tar
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' evcc-heidelberg:safety1-publish-tested)" = linux/amd64
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' evcc-heidelberg:safety1-publish-tested)" = "$SOURCE_COMMIT"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' evcc-heidelberg:safety1-publish-tested)" = "$VERSION"
+      - name: Preserve latest digest and refuse overwriting the commit tag
+        id: registry-before
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          repo = os.environ['IMAGE'].removeprefix('ghcr.io/')
+          token = json.load(urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:' + repo + ':pull'))['token']
+          headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'}
+          def digest(tag):
+              with urllib.request.urlopen(urllib.request.Request('https://ghcr.io/v2/' + repo + '/manifests/' + tag, headers=headers), timeout=30) as response:
+                  return response.headers['Docker-Content-Digest']
+          latest = digest('latest')
+          try:
+              digest(os.environ['COMMIT_TAG'])
+          except urllib.error.HTTPError as error:
+              assert error.code == 404, f'Cannot verify absent commit tag: HTTP {error.code}'
+          else:
+              raise SystemExit('Commit tag already exists; refusing to overwrite it')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print('latest_digest=' + latest, file=output)
+          print('Preserved latest: ' + latest)
+          PY
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested image with only the two approved tags
+        run: |
+          docker tag evcc-heidelberg:safety1-publish-tested "$IMAGE:$COMMIT_TAG"
+          docker tag evcc-heidelberg:safety1-publish-tested "$IMAGE:$ALIAS_TAG"
+          docker push "$IMAGE:$COMMIT_TAG"
+          docker push "$IMAGE:$ALIAS_TAG"
+      - name: Verify public manifests, matching digests and unchanged latest
+        env:
+          PREVIOUS_LATEST: ${{ steps.registry-before.outputs.latest_digest }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          repo = os.environ['IMAGE'].removeprefix('ghcr.io/')
+          token = json.load(urllib.request.urlopen('https://ghcr.io/token?service=ghcr.io&scope=repository:' + repo + ':pull'))['token']
+          headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'}
+          def digest(tag):
+              with urllib.request.urlopen(urllib.request.Request('https://ghcr.io/v2/' + repo + '/manifests/' + tag, headers=headers), timeout=30) as response:
+                  return response.headers['Docker-Content-Digest']
+          commit = digest(os.environ['COMMIT_TAG'])
+          assert digest(os.environ['ALIAS_TAG']) == commit, 'Tags differ'
+          assert digest('latest') == os.environ['PREVIOUS_LATEST'], 'Latest changed'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              for key, value in [('Image', os.environ['IMAGE']), ('Version', os.environ['VERSION']), ('Source commit', os.environ['SOURCE_COMMIT']), ('Both approved tags digest', commit), ('Unchanged latest digest', os.environ['PREVIOUS_LATEST'])]:
+                  print(f'- {key}: `{value}`', file=output)
+              print('- Public anonymous registry access verified. No electrical safety approval.', file=output)
+          print('PUBLIC_IMAGE_DIGEST=' + commit)
+          PY
+      - name: Pull publicly without Docker credentials and smoke test
+        run: |
+          mkdir -p "$RUNNER_TEMP/anonymous-docker"
+          docker --config "$RUNNER_TEMP/anonymous-docker" pull --platform linux/amd64 "$IMAGE:$COMMIT_TAG"
+          docker --config "$RUNNER_TEMP/anonymous-docker" pull --platform linux/amd64 "$IMAGE:$ALIAS_TAG"
+          docker run --rm --network none --entrypoint evcc "$IMAGE:$COMMIT_TAG" --version | grep -F "$VERSION"
