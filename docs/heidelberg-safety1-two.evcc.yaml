@@ -1,0 +1,30 @@
+# Nur Vorlage. Dokumentationsadressen ersetzen, nicht auf Produktivsystem starten.
+# Gültige Sponsorkonfiguration separat erforderlich. Anschlussgrenze und Netzmessung
+# fehlen absichtlich. Vor Ladebetrieb fachlich festlegen und als Circuit zuordnen.
+interval: 10s
+chargers:
+  - name: heidelberg1
+    type: heidelberg
+    uri: 192.0.2.11:502
+    id: 1
+    phasefeedback: true
+    timeout: 2s
+  - name: heidelberg2
+    type: heidelberg
+    uri: 192.0.2.12:502
+    id: 1
+    phasefeedback: true
+    timeout: 2s
+loadpoints:
+  - title: Heidelberg 1
+    charger: heidelberg1
+    mode: off
+    phases: 0
+    minCurrent: 6
+    maxCurrent: 16
+  - title: Heidelberg 2
+    charger: heidelberg2
+    mode: off
+    phases: 0
+    minCurrent: 6
+    maxCurrent: 16

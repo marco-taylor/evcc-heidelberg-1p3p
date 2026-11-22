@@ -1,0 +1,88 @@
+# Generic HTTP fixture. Heidelberg driver guards are exercised in TCP Go tests.
+# All addresses refer exclusively to the dedicated internal Docker test network.
+interval: 1s
+log: error
+network:
+  host: 0.0.0.0
+  port: 7071
+meters:
+  - name: grid
+    type: custom
+    power:
+      source: http
+      uri: http://sim:8080/grid
+  - name: pv
+    type: custom
+    power:
+      source: http
+      uri: http://sim:8080/pv
+site:
+  title: Isolated Heidelberg core test
+  meters:
+    grid: grid
+    pv: [pv]
+circuits:
+  - name: synthetic
+    getMaxPower:
+      source: http
+      uri: http://sim:8080/budget
+chargers:
+  - name: controller1
+    type: custom
+    tos: true
+    status:
+      source: http
+      uri: http://sim:8080/controller/1/status
+    enabled:
+      source: http
+      uri: http://sim:8080/controller/1/enabled
+    enable:
+      source: http
+      uri: http://sim:8080/controller/1/enable?value=${enable}
+    maxcurrent:
+      source: http
+      uri: http://sim:8080/controller/1/maxcurrent?value=${maxcurrent}
+    power:
+      source: http
+      uri: http://sim:8080/controller/1/power
+  - name: controller2
+    type: custom
+    tos: true
+    status:
+      source: http
+      uri: http://sim:8080/controller/2/status
+    enabled:
+      source: http
+      uri: http://sim:8080/controller/2/enabled
+    enable:
+      source: http
+      uri: http://sim:8080/controller/2/enable?value=${enable}
+    maxcurrent:
+      source: http
+      uri: http://sim:8080/controller/2/maxcurrent?value=${maxcurrent}
+    power:
+      source: http
+      uri: http://sim:8080/controller/2/power
+loadpoints:
+  - title: Controller 1
+    charger: controller1
+    circuit: synthetic
+    mode: off
+    phases: 3
+    minCurrent: 6
+    maxCurrent: 16
+    enable:
+      delay: 0s
+    disable:
+      delay: 0s
+  - title: Controller 2
+    charger: controller2
+    circuit: synthetic
+    mode: off
+    phases: 3
+    minCurrent: 6
+    maxCurrent: 16
+    enable:
+      delay: 0s
+    disable:
+      delay: 0s

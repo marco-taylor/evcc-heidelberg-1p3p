@@ -178,6 +178,10 @@ func (lp *Loadpoint) syncChargerPhases(disabled bool) error {
 	if pg, ok := api.Cap[api.PhaseGetter](lp.charger); ok {
 		chargerPhases, err := pg.GetPhases()
 		if err != nil {
+			lp.invalidatePhaseFeedback(err)
+			if errors.Is(err, api.ErrPhaseStateUnknown) {
+				return fmt.Errorf("charger get phases: %w", err)
+			}
 			if errors.Is(err, api.ErrNotAvailable) {
 				return nil
 			}
@@ -215,4 +219,11 @@ func (lp *Loadpoint) syncChargerPhases(disabled bool) error {
 	}
 
 	return nil
+}
+
+func (lp *Loadpoint) invalidatePhaseFeedback(err error) {
+	if errors.Is(err, api.ErrPhaseStateUnknown) {
+		lp.SetPhases(0)
+		lp.ResetMeasuredPhases()
+	}
 }

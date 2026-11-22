@@ -52,17 +52,19 @@ jobs:
           push: false
           tags: evcc-heidelberg:ci
           build-args: |
-            TAG_NAME=0.320.0-dev.heidelberg.7b590b84
+            TAG_NAME=0.320.0-dev.heidelberg.safety1.dual
             SHA=${{ github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=0.320.0-dev.heidelberg.7b590b84
+            org.opencontainers.image.version=0.320.0-dev.heidelberg.safety1.dual
           cache-from: type=gha,scope=heidelberg-amd64
           cache-to: type=gha,mode=max,scope=heidelberg-amd64
       - name: Smoke test without network, devices or configuration
         run: |
           test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' evcc-heidelberg:ci)" = linux/amd64
           docker run --rm --network none --entrypoint evcc evcc-heidelberg:ci --version
+      - name: Test isolated dual-controller PV and dynamic load management
+        run: bash scripts/test_heidelberg_docker.sh evcc-heidelberg:ci
       - name: Export tested image
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: docker save evcc-heidelberg:ci -o image.tar

@@ -1,5 +1,19 @@
 # Heidelberg-1p3p-Fork für Unraid
 
+## Aktueller Safety.1-Entwurf vom 22.11.2026
+
+Maßgeblich für den neuen Entwurf ist [der Safety.1-Prüfbericht](HEIDELBERG_SAFETY1_DUAL.md), mit [Vorlage für zwei Controller](heidelberg-safety1-two.evcc.yaml) und [PR #6](https://github.com/marco-taylor/evcc-heidelberg-1p3p/pull/6). Basis ist Fork-master 9118fafa, Imageversion des lokalen Entwurfs 0.320.0-dev.heidelberg.safety1.dual. Das aktuelle offizielle Release ist 0.319.1; es wurde nicht vollständig auf diesen Entwicklungsfork portiert.
+
+Nur der explizite Modus `phasefeedback: true` registriert jetzt PhaseGetter und PhaseSwitcher bereits beim Start. Er verlangt die tatsächlich installierte Firmware v1.2.0-safety.1 / 63d6c0de mit bestätigter Register-4-Rückmeldung. Unbekannte Werte und Kommunikationsfehler verwerfen alte Phasenannahmen im Kern und blockieren positive Befehle. Automatische Entriegelung und WakeUp sind im Safety-Modus gesperrt. Der Konstruktor greift dort noch nicht auf Hardware zu; spätere Initialisierung und alle normalen Regelaufrufe tun dies sehr wohl.
+
+Ohne diesen Modus bleibt die bisherige automatische PhaseSwitcher-Erkennung für alte Brücken erhalten, aber kein PhaseGetter für deren bloße Auftragsrückmeldung. Der ungemergte PR-2-Vertrag wird damit bewusst eingeschränkt. Der neue Branch enthält gezielte Kernänderungen und Eingabevalidierung; die untenstehenden früheren Aussagen über einen unveränderten Kern und fehlende Validierung gelten für den damaligen Port, nicht für diesen Entwurf.
+
+Keine Produktivumstellung, kein Merge, keine Image-Veröffentlichung und keine elektrische Sicherheitsfreigabe. Je Wallbox maximal 16 A in der Vorlage; gemeinsame Anschlussgrenze und Messkonzept bleiben installationsabhängig. Alle Zeit-, Nullstrom- und Verriegelungsschutzfunktionen bleiben Aufgabe der Firmware und Hardware.
+
+## Historische Dokumentation der früheren PRs
+
+Die folgenden Abschnitte dokumentieren die ursprünglichen Arbeiten an PR #1 und #2. Versions-, Veröffentlichungs- und Registeraussagen sind zeitgebunden und gelten nicht als aktuelle Safety.1-Anleitung. Für den neuen Entwurf gelten die oben verlinkten Dokumente.
+
 ## Versionsbasis und Freigabe
 
 Die freigegebene Arbeitsbasis dieses PR ist der aktuelle Fork-master vom 14.11.2026:
@@ -19,13 +33,17 @@ Geplante Images: `ghcr.io/marco-taylor/evcc-heidelberg-1p3p:latest` sowie `sha-<
 Die [Erweiterung von zivillian](https://github.com/zivillian/evcc/tree/heidelberg-1p3p), Stand `f1b8f5a8bfc3225b854332f90605e62f89848e39`, wird nur im Heidelberg-Treiber ergänzt:
 
 1. Einmalige Erkennung über Modbus TCP, FC03, Holding-Register 4.
-2. Nur der Antwortwert 1 oder 3 registriert dynamisch `api.PhaseSwitcher`.
+2. Nur der Antwortwert 1 oder 3 registriert dynamisch `api.PhaseSwitcher` und `api.PhaseGetter`.
 3. Fehlendes Register, Modbus-Fehler oder andere Werte aktivieren keine Umschaltfähigkeit.
 4. Ein Phasenbefehl schreibt mit FC06 den Wert 1 oder 3 auf Register 4 der Bridge. Modbus-Fehler werden weitergegeben.
 
-Die Capability-API, der Heidelberg-Basistreiber, die Modbus-Verbindungsschicht samt Bibliotheksversion und die zentralen Phasen-/Synchronisationsfunktionen sind zwischen 0.319.0 und dem Basiscommit unverändert. Es ist keine API-Anpassung der Erweiterung nötig. Die einzige Änderung am bisherigen Treiberdiff ist gofmt-Ausrichtung.
+Die Capability-API, die Modbus-Verbindungsschicht samt Bibliotheksversion und die zentralen Phasen-/Synchronisationsfunktionen sind zwischen 0.319.0 und dem Basiscommit unverändert. Die ergänzte Phasenabfrage verwendet die bereits vorhandene API; Änderungen am evcc-Kern sind nicht nötig.
 
-Sicherheitsrelevante Wirkung der Erweiterung: Ein erkannter Bridge-Treiber erhält erstmals die Fähigkeit, automatische Phasenbefehle aus evcc entgegenzunehmen. Es werden keine eigenen Abschaltfolgen, Wartezeiten oder Verriegelungen hinzugefügt. Der Treiber prüft nicht nochmals den Laststrom und implementiert keine zusätzliche Gültigkeitsprüfung seines internen Integer-Parameters. Es wird keine neue GetPhases-Fähigkeit ergänzt. Die vorhandenen evcc-Abläufe und die Bridge-Firmware bleiben dafür maßgeblich.
+Sicherheitsrelevante Wirkung der Erweiterung: Ein erkannter Bridge-Treiber erhält die Fähigkeit, automatische Phasenbefehle aus evcc entgegenzunehmen. Es werden keine eigenen Abschaltfolgen, Wartezeiten oder Verriegelungen hinzugefügt. Der Treiber prüft nicht nochmals den Laststrom und implementiert keine zusätzliche Gültigkeitsprüfung seines internen Integer-Parameters. Die vorhandenen evcc-Abläufe und die Bridge-Firmware bleiben dafür maßgeblich.
+
+Ergänzung vom 18.11.2026 nach dem [Referenzpatch von jetronic18s](https://github.com/jetronic18s/evcc/blob/07ada3b7b9b80484ab3efe6c9cb44ea7745d0142/charger/heidelberg-ec.go), Branch `heidelberg-1p3p-0.318.1`: Bei derselben erfolgreichen Bridge-Erkennung wird zusätzlich `api.PhaseGetter` registriert. `GetPhases()` liest die Phaseneinstellung bei jedem Aufruf mit FC03 aus Holding-Register 4. Nur 1 und 3 sind gültig; andere Werte liefern 0 und `api.ErrNotAvailable`, Kommunikationsfehler liefern 0 und den ursprünglichen Modbus-/Transportfehler. Es wird kein alter Erkennungswert als Ersatz verwendet.
+
+Die vorhandene evcc-Synchronisierung nutzt diese Fähigkeit, um ihre Phaseneinstellung mit der Bridge abzugleichen. `api.ErrNotAvailable` überspringt diesen Abgleich, Kommunikationsfehler werden als Fehler weitergereicht. Register 4 der geprüften Ethernet-Firmware liefert eine angeforderte beziehungsweise vorgegebene Phasenzahl, keinen unabhängigen Istwert der Schütze. Dadurch entsteht kein neuer Sicherheitsnachweis. Die schreibende Umschaltung, zentrale Regelung und Firmware bleiben unverändert.
 
 Gegenüber dem ursprünglich getesteten Heidelberg-Port wird keine sicherheitsrelevante Schaltlogik geändert. Gegenüber master kommt ausschließlich die beschriebene optionale Fähigkeit hinzu. Der gesamte evcc-Kern, alle übrigen Integrationen, Abhängigkeiten und generierten Dateien bleiben gegenüber master unverändert. Die 90 vorhandenen Upstream-Commits werden erhalten und nicht zurückgenommen.
 
@@ -127,6 +145,6 @@ Für einen Rollback den vorher notierten Image-Digest/Commit-Tag zusammen mit de
 
 Der Zielhost wurde lesend als Intel N100 mit x86_64 und vier CPUs erkannt. Gebaut wird `linux/amd64`, die Go-CPU-Basis ist v1. Der lokale Image-Smoke-Test benutzt kein Netzwerk und keine Gerätemounts.
 
-Die automatischen Treibertests prüfen sechs Erkennungsfälle sowie erfolgreiche 1P-/3P-Schreibbefehle und eine Fehlerantwort. Sie kontrollieren die erwarteten Modbus-Telegramme, einschließlich der unveränderten Initialisierung, und dass die neue Erkennung keinen Phasenwechsel schreibt. Es werden weder echte Wallboxen noch Platinen kontaktiert.
+Die automatischen Treibertests prüfen sechs Erkennungsfälle für beide optionalen Fähigkeiten sowie erfolgreiche 1P-/3P-Schreibbefehle und eine Fehlerantwort. Weitere sieben Rückmeldungsfälle decken 1P, 3P, 0, 2, 65535, eine Modbus-Exception und einen Verbindungsabbruch ab. Sie kontrollieren FC03 auf Register 4, die unveränderte Initialisierung und dass die Rückmeldung keinen Phasenwechsel schreibt oder den Erkennungswert zwischenspeichert. Es werden ausschließlich lokale TCP-Simulatoren verwendet, weder echte Wallboxen noch Platinen kontaktiert.
 
 Konkrete lokale und GitHub-CI-Ergebnisse sowie offene Freigabeschritte stehen im zugehörigen PR beziehungsweise im lokalen Prüfbericht. Eine Prüfung des später veröffentlichten Registry-Digests ist vor der ersten Veröffentlichungsfreigabe nicht möglich und wird nicht vorgetäuscht.

@@ -173,3 +173,18 @@ func TestHEMSConsumptionClamp(t *testing.T) {
 		})
 	}
 }
+
+func TestTwoHeidelbergSyntheticPowerBudget(t *testing.T) {
+	for _, budget := range []float64{6900, 13800, 18000} {
+		c, err := New(util.NewLogger("dual-budget"), "synthetic", 0, budget, nil, 0)
+		require.NoError(t, err)
+		first := min(11040.0, budget/2)
+		c.power = first
+		second := c.ValidatePower(0, 11040)
+		assert.LessOrEqual(t, first+second, budget)
+		c.power = first + second
+		c.SetMaxPower(budget / 2)
+		adjusted := c.ValidatePower(second, 11040)
+		assert.LessOrEqual(t, first+adjusted, budget/2)
+	}
+}

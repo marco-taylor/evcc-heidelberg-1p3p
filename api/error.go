@@ -34,6 +34,12 @@ func permanent(msg string) error {
 // ErrNotAvailable indicates that a feature is not available
 var ErrNotAvailable = permanent("not available")
 
+// ErrPhaseStateUnknown invalidates a previously assumed phase configuration.
+var ErrPhaseStateUnknown = errors.New("phase state unconfirmed")
+
+// ErrPhaseSwitchPending indicates an accepted switch awaiting phase confirmation.
+var ErrPhaseSwitchPending = errors.New("phase switch awaiting confirmation")
+
 // ErrUnsupportedPlatform indicates unsupported hardware platform
 var ErrUnsupportedPlatform = permanent("unsupported platform")
 
