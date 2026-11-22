@@ -1,5 +1,19 @@
 # Heidelberg-1p3p-Fork für Unraid
 
+## Aktueller Safety.1-Entwurf vom 22.11.2026
+
+Maßgeblich für den neuen Entwurf ist [der Safety.1-Prüfbericht](HEIDELBERG_SAFETY1_DUAL.md), mit [Vorlage für zwei Controller](heidelberg-safety1-two.evcc.yaml) und [PR #6](https://github.com/marco-taylor/evcc-heidelberg-1p3p/pull/6). Basis ist Fork-master 9118fafa, Imageversion des lokalen Entwurfs 0.320.0-dev.heidelberg.safety1.dual. Das aktuelle offizielle Release ist 0.319.1; es wurde nicht vollständig auf diesen Entwicklungsfork portiert.
+
+Nur der explizite Modus `phasefeedback: true` registriert jetzt PhaseGetter und PhaseSwitcher bereits beim Start. Er verlangt die tatsächlich installierte Firmware v1.2.0-safety.1 / 63d6c0de mit bestätigter Register-4-Rückmeldung. Unbekannte Werte und Kommunikationsfehler verwerfen alte Phasenannahmen im Kern und blockieren positive Befehle. Automatische Entriegelung und WakeUp sind im Safety-Modus gesperrt. Der Konstruktor greift dort noch nicht auf Hardware zu; spätere Initialisierung und alle normalen Regelaufrufe tun dies sehr wohl.
+
+Ohne diesen Modus bleibt die bisherige automatische PhaseSwitcher-Erkennung für alte Brücken erhalten, aber kein PhaseGetter für deren bloße Auftragsrückmeldung. Der ungemergte PR-2-Vertrag wird damit bewusst eingeschränkt. Der neue Branch enthält gezielte Kernänderungen und Eingabevalidierung; die untenstehenden früheren Aussagen über einen unveränderten Kern und fehlende Validierung gelten für den damaligen Port, nicht für diesen Entwurf.
+
+Keine Produktivumstellung, kein Merge, keine Image-Veröffentlichung und keine elektrische Sicherheitsfreigabe. Je Wallbox maximal 16 A in der Vorlage; gemeinsame Anschlussgrenze und Messkonzept bleiben installationsabhängig. Alle Zeit-, Nullstrom- und Verriegelungsschutzfunktionen bleiben Aufgabe der Firmware und Hardware.
+
+## Historische Dokumentation der früheren PRs
+
+Die folgenden Abschnitte dokumentieren die ursprünglichen Arbeiten an PR #1 und #2. Versions-, Veröffentlichungs- und Registeraussagen sind zeitgebunden und gelten nicht als aktuelle Safety.1-Anleitung. Für den neuen Entwurf gelten die oben verlinkten Dokumente.
+
 ## Versionsbasis und Freigabe
 
 Die freigegebene Arbeitsbasis dieses PR ist der aktuelle Fork-master vom 14.11.2026:

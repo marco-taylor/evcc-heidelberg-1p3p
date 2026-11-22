@@ -136,7 +136,6 @@ func newHeidelbergEC(ctx context.Context, settings modbus.Settings, phaseFeedbac
 }
 
 func (wb *HeidelbergEC) initialize() error {
-
 	// disable standby to prevent comm loss
 	if err := wb.set(hecRegStandbyConfig, hecStandbyDisabled); err != nil {
 		return err
